@@ -1,8 +1,6 @@
-pub mod login;
-pub mod logout;
-pub mod whoami;
-
-pub struct Context {
-    pub base_url: String,
-    pub json: bool,
-}
+pub mod cancel;
+pub mod config_cmd;
+pub mod list;
+pub mod resume;
+pub mod run;
+pub mod status;
