@@ -6,11 +6,12 @@ mod commands;
 mod config;
 mod error;
 mod github;
+mod logs;
 mod notify;
 mod output;
 mod pipeline;
 
-use commands::{cancel, config_cmd, list, resume, run, status};
+use commands::{cancel, config_cmd, list, logs as logs_cmd, resume, run, status};
 
 #[derive(Parser)]
 #[command(name = "cadence")]
@@ -35,6 +36,8 @@ enum Commands {
     Cancel(cancel::CancelArgs),
     /// Manage configuration
     Config(config_cmd::ConfigArgs),
+    /// View agent run logs for a workflow
+    Logs(logs_cmd::LogsArgs),
 }
 
 #[tokio::main]
@@ -66,6 +69,7 @@ async fn main() {
         }
         Commands::Cancel(args) => cancel::run(args).await,
         Commands::Config(args) => config_cmd::run(args).await,
+        Commands::Logs(args) => logs_cmd::run(args).await,
     };
 
     if let Err(err) = result {
