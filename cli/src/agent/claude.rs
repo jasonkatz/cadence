@@ -5,6 +5,7 @@ use tokio::process::Command;
 
 use crate::agent::role::AgentRole;
 use crate::config::CadenceConfig;
+use crate::logs::{append_log, LogEntry};
 
 pub struct ClaudeAgent {
     pub role: AgentRole,
@@ -14,6 +15,8 @@ pub struct ClaudeAgent {
     pub budget_usd: Option<f64>,
     pub repo_dir: String,
     pub timeout_secs: u64,
+    pub workflow_id: String,
+    pub iteration: u32,
 }
 
 #[derive(Debug)]
@@ -29,6 +32,8 @@ impl ClaudeAgent {
         session_id: String,
         repo_dir: &Path,
         config: &CadenceConfig,
+        workflow_id: String,
+        iteration: u32,
     ) -> Self {
         let role_key = role.config_key();
         Self {
@@ -43,6 +48,8 @@ impl ClaudeAgent {
             } else {
                 config.timeouts.agent_secs
             },
+            workflow_id,
+            iteration,
         }
     }
 
@@ -75,6 +82,8 @@ impl ClaudeAgent {
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         cmd.current_dir(&self.repo_dir);
 
+        let started = std::time::Instant::now();
+
         let output = tokio::time::timeout(
             std::time::Duration::from_secs(self.timeout_secs),
             cmd.output(),
@@ -88,11 +97,21 @@ impl ClaudeAgent {
         })?
         .with_context(|| format!("spawning claude for agent {}", self.role))?;
 
+        let duration_secs = started.elapsed().as_secs_f64();
         let exit_code = output.status.code().unwrap_or(-1);
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
-        if !output.status.success() && stdout.is_empty() {
+        let failed_with_no_stdout = !output.status.success() && stdout.is_empty();
+        let response_text = if failed_with_no_stdout {
+            stderr.trim().to_string()
+        } else {
+            extract_text_from_json(&stdout).unwrap_or_else(|| stdout.clone())
+        };
+
+        self.write_log(prompt, &response_text, exit_code, duration_secs);
+
+        if failed_with_no_stdout {
             bail!(
                 "agent {} exited with code {}: {}",
                 self.role,
@@ -101,9 +120,10 @@ impl ClaudeAgent {
             );
         }
 
-        let text = extract_text_from_json(&stdout).unwrap_or(stdout);
-
-        Ok(AgentResponse { text, exit_code })
+        Ok(AgentResponse {
+            text: response_text,
+            exit_code,
+        })
     }
 
     pub async fn resume_send(&self, prompt: &str) -> Result<AgentResponse> {
@@ -131,6 +151,8 @@ impl ClaudeAgent {
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         cmd.current_dir(&self.repo_dir);
 
+        let started = std::time::Instant::now();
+
         let output = tokio::time::timeout(
             std::time::Duration::from_secs(self.timeout_secs),
             cmd.output(),
@@ -144,11 +166,21 @@ impl ClaudeAgent {
         })?
         .with_context(|| format!("spawning claude for agent {}", self.role))?;
 
+        let duration_secs = started.elapsed().as_secs_f64();
         let exit_code = output.status.code().unwrap_or(-1);
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
-        if !output.status.success() && stdout.is_empty() {
+        let failed_with_no_stdout = !output.status.success() && stdout.is_empty();
+        let response_text = if failed_with_no_stdout {
+            stderr.trim().to_string()
+        } else {
+            extract_text_from_json(&stdout).unwrap_or_else(|| stdout.clone())
+        };
+
+        self.write_log(prompt, &response_text, exit_code, duration_secs);
+
+        if failed_with_no_stdout {
             bail!(
                 "agent {} exited with code {}: {}",
                 self.role,
@@ -157,9 +189,29 @@ impl ClaudeAgent {
             );
         }
 
-        let text = extract_text_from_json(&stdout).unwrap_or(stdout);
+        Ok(AgentResponse {
+            text: response_text,
+            exit_code,
+        })
+    }
 
-        Ok(AgentResponse { text, exit_code })
+    /// Serialize and append the interaction to the workflow's JSONL log.
+    ///
+    /// Disk failures print a warning but do not abort the pipeline.
+    fn write_log(&self, prompt: &str, response: &str, exit_code: i32, duration_secs: f64) {
+        let entry = LogEntry {
+            timestamp: chrono::Utc::now(),
+            workflow_id: self.workflow_id.clone(),
+            agent: self.role.to_string(),
+            iteration: self.iteration,
+            prompt: prompt.to_string(),
+            response: response.to_string(),
+            exit_code,
+            duration_secs,
+        };
+        if let Err(e) = append_log(&entry) {
+            eprintln!("  \x1b[33mwarning: failed to write agent log: {e}\x1b[0m");
+        }
     }
 }
 
