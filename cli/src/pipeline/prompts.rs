@@ -176,8 +176,20 @@ pub fn e2e_verify_prompt(state: &WorkflowState, artifact: &str) -> String {
     )
 }
 
-pub fn update_pr_prompt(state: &WorkflowState) -> String {
+pub fn update_pr_prompt(state: &WorkflowState, achievement_badges: &[String]) -> String {
     let req_context = requirements_context(state);
+    let badge_section = if achievement_badges.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\n\nInclude a \"## 🏅 Achievements\" section at the end of the description with these earned badges:\n{}",
+            achievement_badges
+                .iter()
+                .map(|b| format!("- {b}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    };
 
     format!(
         "Update PR #{pr_num} on {repo} with a proper title and description.\n\n\
@@ -187,7 +199,7 @@ pub fn update_pr_prompt(state: &WorkflowState) -> String {
          Instructions:\n\
          1. Read the PR diff: gh pr diff {pr_num} --repo {repo}\n\
          2. Write a PR title (imperative mood, ~50 chars, capitalized, no period)\n\
-         3. Write a description covering: overview, key changes, testing done\n\
+         3. Write a description covering: overview, key changes, testing done{badge_section}\n\
          4. Update: gh pr edit {pr_num} --repo {repo} --title \"<title>\" --body \"<description>\"\n\n\
          The description should help a human assess intent, key changes, and risk in under 2 minutes.",
         pr_num = state.pr_number.unwrap_or(0),

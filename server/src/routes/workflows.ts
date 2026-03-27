@@ -31,6 +31,7 @@ export interface WorkflowState {
   started_at: string;
   updated_at: string;
   error: string | null;
+  personality?: string;
 }
 
 export async function readWorkflowFiles(): Promise<WorkflowState[]> {

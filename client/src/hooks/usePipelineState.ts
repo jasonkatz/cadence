@@ -14,6 +14,7 @@ export interface PipelineState {
   started_at: string;
   updated_at: string;
   error: string | null;
+  personality?: string;
 }
 
 interface UsePipelineStateResult {

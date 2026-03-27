@@ -62,4 +62,43 @@ describe("AgentTheater", () => {
     render(<AgentTheater />);
     expect(screen.getByText(/iteration 1/i)).toBeInTheDocument();
   });
+
+  it("shows Space Mission stage labels when personality is space", () => {
+    const liveState = {
+      id: "abc12345",
+      task: "add dark mode",
+      stage: "dev",
+      iteration: 1,
+      max_iters: 8,
+      pr_number: null,
+      branch: "dev/abc12345",
+      repo: "owner/repo",
+      started_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      error: null,
+      personality: "space",
+    };
+    render(<AgentTheater pipelineState={liveState} />);
+    expect(screen.getByText("Launch")).toBeInTheDocument();
+    expect(screen.getByText("Orbit")).toBeInTheDocument();
+    expect(screen.getByText("Re-entry")).toBeInTheDocument();
+  });
+
+  it("shows rework visualization when iteration is greater than 1", () => {
+    const reworkState = {
+      id: "abc12345",
+      task: "add dark mode",
+      stage: "dev",
+      iteration: 2,
+      max_iters: 8,
+      pr_number: null,
+      branch: "dev/abc12345",
+      repo: "owner/repo",
+      started_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      error: null,
+    };
+    render(<AgentTheater pipelineState={reworkState} />);
+    expect(screen.getByText(/Rework Cycle 1/i)).toBeInTheDocument();
+  });
 });

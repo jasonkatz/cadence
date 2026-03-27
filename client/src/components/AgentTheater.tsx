@@ -45,6 +45,36 @@ const THEATER_STAGES: TheaterStage[] = [
   },
 ];
 
+// Override stage labels for non-default personalities.
+const PERSONALITY_STAGE_LABELS: Record<string, Partial<Record<string, string>>> = {
+  space: {
+    Dev: "Launch",
+    "In Review": "Orbit",
+    Verification: "Deep Scan",
+    "Final Signoff": "Re-entry",
+    Complete: "Splashdown",
+  },
+  pirate: {
+    Dev: "Chart Course",
+    "In Review": "Crow's Nest",
+    Verification: "Test the Seas",
+    "Final Signoff": "Make Port",
+    Complete: "Treasure Found",
+  },
+  cooking: {
+    Dev: "Prep Kitchen",
+    "In Review": "Chef's Taste",
+    Verification: "Quality Check",
+    "Final Signoff": "Plate Up",
+    Complete: "Bon Appétit",
+  },
+};
+
+function getStageLabel(label: string, personality?: string): string {
+  if (!personality || personality === "default") return label;
+  return PERSONALITY_STAGE_LABELS[personality]?.[label] ?? label;
+}
+
 const STAGE_SPEECHES: Record<string, string[]> = {
   Dev: [
     "Writing tests first...",
@@ -169,13 +199,16 @@ function StageIndicator({
   stage,
   index,
   currentIndex,
+  personality,
 }: {
   stage: TheaterStage;
   index: number;
   currentIndex: number;
+  personality?: string;
 }) {
   const isDone = index < currentIndex;
   const isCurrent = index === currentIndex;
+  const label = getStageLabel(stage.label, personality);
 
   return (
     <div className="flex items-center gap-2">
@@ -195,7 +228,7 @@ function StageIndicator({
           isCurrent ? "text-blue-700" : isDone ? "text-green-600" : "text-gray-400"
         }`}
       >
-        {stage.label}
+        {label}
       </span>
     </div>
   );
@@ -245,6 +278,7 @@ export function AgentTheater({ pipelineState }: AgentTheaterProps = {}) {
   const stageIndex = isLive ? liveStageIndex : demoStageIndex;
   const iteration = isLive ? liveIteration : demoIteration;
   const isComplete = isLive ? liveIsComplete : (demoStageIndex === THEATER_STAGES.length - 1 && !demoIsRunning);
+  const personality = isLive ? pipelineState?.personality : undefined;
 
   const currentStage = THEATER_STAGES[stageIndex];
 
@@ -366,6 +400,7 @@ export function AgentTheater({ pipelineState }: AgentTheaterProps = {}) {
             stage={stage}
             index={i}
             currentIndex={stageIndex}
+            personality={personality}
           />
         ))}
       </div>
@@ -381,19 +416,42 @@ export function AgentTheater({ pipelineState }: AgentTheaterProps = {}) {
         {/* Stage floor label */}
         <div className="mt-6 border-t-2 border-gray-300 pt-3 text-center">
           <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-            {isComplete ? "🎉 Pipeline Complete" : `Stage: ${currentStage?.label ?? ""}`}
+            {isComplete
+              ? "🎉 Pipeline Complete"
+              : `Stage: ${getStageLabel(currentStage?.label ?? "", personality)}`}
           </span>
         </div>
       </div>
 
-      {/* Rework indicator */}
+      {/* Rework back-and-forth visualization */}
       {iteration > 1 && (
-        <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2">
-          <span>🔄</span>
-          <span>
-            Rework in progress — iteration {iteration} (review feedback sent
-            back to Dev)
-          </span>
+        <div className="rounded-lg border border-amber-200 bg-amber-50 overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-2 bg-amber-100 border-b border-amber-200">
+            <span className="text-amber-700 font-semibold text-sm">
+              🔄 Rework Cycle {iteration - 1}
+            </span>
+            <span className="text-amber-600 text-xs ml-auto">
+              {Array.from({ length: iteration - 1 }, (_, i) => (
+                <span key={i} className="inline-block w-2 h-2 rounded-full bg-amber-400 mr-1" />
+              ))}
+            </span>
+          </div>
+          <div className="flex items-center justify-center gap-3 px-4 py-3 text-sm text-amber-800">
+            <span className="flex items-center gap-1">
+              <span>🔍</span>
+              <span className="font-medium">Reviewer</span>
+            </span>
+            <span className="text-amber-500 font-bold">→ feedback →</span>
+            <span className="flex items-center gap-1">
+              <span>🔨</span>
+              <span className="font-medium">Dev</span>
+            </span>
+            <span className="text-amber-500 font-bold">→ rework →</span>
+            <span className="flex items-center gap-1">
+              <span>🔍</span>
+              <span className="font-medium">Review again</span>
+            </span>
+          </div>
         </div>
       )}
 

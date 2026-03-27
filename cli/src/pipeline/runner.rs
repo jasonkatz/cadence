@@ -224,7 +224,16 @@ pub async fn run_pipeline(state: &mut WorkflowState, config: &CadenceConfig) -> 
                 log_stage(state, &stage_msg);
 
                 let agent = make_agent(AgentRole::Dev, state, config);
-                let prompt = prompts::update_pr_prompt(state);
+                let badge_labels: Vec<String> = crate::achievements::AchievementStore::load()
+                    .map(|store| {
+                        store
+                            .achievements
+                            .iter()
+                            .map(|a| a.kind.label().to_string())
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let prompt = prompts::update_pr_prompt(state, &badge_labels);
                 let _ = agent.resume_send(&prompt).await?;
 
                 let pr_url = format!(
