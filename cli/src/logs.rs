@@ -62,10 +62,13 @@ pub fn read_agent_logs(workflow_id: &str, agent: &str) -> Result<Vec<LogEntry>> 
 
 pub fn read_workflow_logs(workflow_id: &str) -> Result<Vec<LogEntry>> {
     let agents = list_agents_with_logs(workflow_id)?;
-    let mut all: Vec<LogEntry> = agents
-        .iter()
-        .flat_map(|agent| read_agent_logs(workflow_id, agent).unwrap_or_default())
-        .collect();
+    let mut all: Vec<LogEntry> = Vec::new();
+    for agent in &agents {
+        match read_agent_logs(workflow_id, agent) {
+            Ok(entries) => all.extend(entries),
+            Err(e) => eprintln!("  \x1b[33mwarn: failed to read logs for agent {agent}: {e}\x1b[0m"),
+        }
+    }
     all.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
     Ok(all)
 }
