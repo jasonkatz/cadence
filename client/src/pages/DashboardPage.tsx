@@ -24,6 +24,14 @@ function DashboardPage() {
     refetchInterval: 5000,
   });
 
+  // Fetch earned achievement IDs from the server (reads the CLI's achievements.json).
+  const { data: achievementsData } = useQuery({
+    queryKey: ["achievements"],
+    queryFn: () =>
+      api.get<{ earned: string[]; workflows_completed: number }>("/achievements"),
+    refetchInterval: 30000,
+  });
+
   const { state: pipelineState } = usePipelineState(
     activeWorkflow?.id ?? null,
   );
@@ -57,7 +65,7 @@ function DashboardPage() {
           <AgentTheater pipelineState={pipelineState} />
 
           {/* Achievement Badges */}
-          <AchievementBadges earned={[]} />
+          <AchievementBadges earned={achievementsData?.earned ?? []} />
 
           {/* User Info */}
           <div className="bg-white shadow rounded-2xl p-6">

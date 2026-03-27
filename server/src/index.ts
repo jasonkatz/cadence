@@ -11,6 +11,7 @@ import healthRoutes from "./routes/health";
 import docsRoutes from "./routes/docs";
 import authRoutes from "./routes/auth";
 import workflowRoutes from "./routes/workflows";
+import achievementRoutes from "./routes/achievements";
 
 const app = express();
 
@@ -22,6 +23,20 @@ app.use(requestLogger);
 app.use(healthRoutes);
 app.use(docsRoutes);
 
+// EventSource cannot send custom headers, so SSE clients pass their JWT as
+// ?token=<jwt>.  Promote it to the Authorization header here — before
+// requireAuth runs — so the standard bearer-token validator sees it.
+app.use("/v1/workflows", (req, _res, next) => {
+  if (
+    req.path.endsWith("/events") &&
+    typeof req.query.token === "string" &&
+    !req.headers.authorization
+  ) {
+    req.headers.authorization = `Bearer ${req.query.token}`;
+  }
+  next();
+});
+
 // Authenticated routes
 const authenticatedRouter = express.Router();
 authenticatedRouter.use(requireAuth);
@@ -29,6 +44,7 @@ authenticatedRouter.use(extractUser);
 authenticatedRouter.use(rateLimiter);
 authenticatedRouter.use(authRoutes);
 authenticatedRouter.use(workflowRoutes);
+authenticatedRouter.use(achievementRoutes);
 
 app.use("/v1", authenticatedRouter);
 
