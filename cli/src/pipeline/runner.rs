@@ -53,7 +53,11 @@ pub async fn run_pipeline(state: &mut WorkflowState, config: &CadenceConfig) -> 
                     prompts::dev_implement_prompt(state)
                 };
 
-                let response = agent.send(&prompt).await?;
+                let response = if state.iteration > 1 {
+                    agent.resume_send(&prompt).await?
+                } else {
+                    agent.send(&prompt).await?
+                };
 
                 log_agent_done(AgentRole::Dev, &response.text);
 

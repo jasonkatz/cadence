@@ -104,13 +104,6 @@ impl WorkflowState {
     pub fn regress(&mut self, to: Stage, context: String) {
         self.iteration += 1;
         self.regression_context = Some(context);
-
-        // Generate a fresh session ID for the regressed agent so the
-        // claude CLI doesn't conflict with the previous iteration's session.
-        if to == Stage::Dev {
-            self.sessions.dev = uuid::Uuid::new_v4().to_string();
-        }
-
         let detail = format!("Regression (iter {})", self.iteration);
         self.transition(to, &detail);
     }
