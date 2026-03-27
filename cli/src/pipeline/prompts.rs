@@ -194,7 +194,7 @@ pub fn update_pr_prompt(state: &WorkflowState) -> String {
          ## Context\n\
          One or two sentences: what this PR does and why.\n\n\
          ## Changes\n\
-         - Bulleted list of key changes (3-6 items)\n\n\
+         - Bulleted list of key changes (3-6 items, focused on external-facing behaviors)\n\n\
          ## Testing\n\
          Brief note on how changes were verified.\n\n\
          ---\n\

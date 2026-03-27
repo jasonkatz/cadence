@@ -197,4 +197,69 @@ mod tests {
         let agents = list_agents_with_logs(&id).unwrap();
         assert!(agents.is_empty());
     }
+
+    #[test]
+    fn log_entry_timing_and_all_fields_round_trip() {
+        // Given — a LogEntry with specific timing values and all fields populated
+        let id = format!("test-timing-{}", uuid::Uuid::new_v4());
+        let ts = chrono::DateTime::parse_from_rfc3339("2026-03-27T14:32:01Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let entry = LogEntry {
+            timestamp: ts,
+            workflow_id: id.clone(),
+            agent: "dev".to_string(),
+            iteration: 3,
+            prompt: "Write the feature".to_string(),
+            response: "Done".to_string(),
+            exit_code: 0,
+            duration_secs: 142.7,
+        };
+
+        // When
+        append_log(&entry).unwrap();
+        let entries = read_agent_logs(&id, "dev").unwrap();
+
+        // Then — every field survives the JSONL round-trip
+        assert_eq!(entries.len(), 1);
+        let got = &entries[0];
+        assert_eq!(got.timestamp, ts);
+        assert_eq!(got.workflow_id, id);
+        assert_eq!(got.agent, "dev");
+        assert_eq!(got.iteration, 3);
+        assert_eq!(got.prompt, "Write the feature");
+        assert_eq!(got.response, "Done");
+        assert_eq!(got.exit_code, 0);
+        assert!((got.duration_secs - 142.7).abs() < 1e-9);
+
+        // Cleanup
+        let config_dir = dirs::config_dir().unwrap();
+        let dir = config_dir.join("cadence").join("logs").join(&id);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn log_entry_nonzero_exit_code_round_trip() {
+        // Given — a failed agent invocation
+        let id = format!("test-exit-{}", uuid::Uuid::new_v4());
+        let mut entry = make_entry(&id, "e2e", 2);
+        entry.exit_code = 1;
+        entry.response = "Error: something failed".to_string();
+        entry.duration_secs = 0.8;
+
+        // When
+        append_log(&entry).unwrap();
+        let entries = read_agent_logs(&id, "e2e").unwrap();
+
+        // Then — failure entries preserve exit_code and duration
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].exit_code, 1);
+        assert!((entries[0].duration_secs - 0.8).abs() < 1e-9);
+        assert_eq!(entries[0].response, "Error: something failed");
+
+        // Cleanup
+        let config_dir = dirs::config_dir().unwrap();
+        let dir = config_dir.join("cadence").join("logs").join(&id);
+        let _ = fs::remove_dir_all(dir);
+    }
 }

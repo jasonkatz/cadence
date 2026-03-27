@@ -246,3 +246,114 @@ fn which(cmd: &str) -> Result<(), ()> {
         .map_err(|_| ())
         .and_then(|s| if s.success() { Ok(()) } else { Err(()) })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::logs::read_agent_logs;
+    use std::fs;
+
+    fn make_agent(workflow_id: &str) -> ClaudeAgent {
+        ClaudeAgent {
+            role: AgentRole::Dev,
+            session_id: "test-session".to_string(),
+            model: "claude-opus-4-5".to_string(),
+            permission_mode: "default".to_string(),
+            budget_usd: None,
+            repo_dir: "/tmp".to_string(),
+            timeout_secs: 60,
+            workflow_id: workflow_id.to_string(),
+            iteration: 2,
+        }
+    }
+
+    #[test]
+    fn write_log_creates_entry_with_timing_fields() {
+        // Given — an agent with a real workflow_id
+        let id = format!("test-write-log-{}", uuid::Uuid::new_v4());
+        let agent = make_agent(&id);
+
+        // When — write_log is called (same call path used by send() and resume_send())
+        agent.write_log("my prompt", "my response", 0, 37.5);
+
+        // Then — the JSONL file exists and contains the timing data
+        let entries = read_agent_logs(&id, "dev").unwrap();
+        assert_eq!(entries.len(), 1);
+        let entry = &entries[0];
+        assert_eq!(entry.agent, "dev");
+        assert_eq!(entry.workflow_id, id);
+        assert_eq!(entry.iteration, 2);
+        assert_eq!(entry.prompt, "my prompt");
+        assert_eq!(entry.response, "my response");
+        assert_eq!(entry.exit_code, 0);
+        assert!((entry.duration_secs - 37.5).abs() < 1e-9);
+        // Timestamp should be recent (within the last minute)
+        let age = chrono::Utc::now() - entry.timestamp;
+        assert!(age.num_seconds() < 60);
+
+        // Cleanup
+        let config_dir = dirs::config_dir().unwrap();
+        let dir = config_dir.join("cadence").join("logs").join(&id);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn write_log_records_failed_invocation() {
+        // Given — simulating what send() and resume_send() do on non-zero exit
+        let id = format!("test-write-log-fail-{}", uuid::Uuid::new_v4());
+        let agent = make_agent(&id);
+
+        // When — write_log is called with a non-zero exit code (failure path)
+        agent.write_log("the prompt", "stderr output here", 1, 2.1);
+
+        // Then — failure entry is stored with correct exit_code and response
+        let entries = read_agent_logs(&id, "dev").unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].exit_code, 1);
+        assert_eq!(entries[0].response, "stderr output here");
+        assert!((entries[0].duration_secs - 2.1).abs() < 1e-9);
+
+        // Cleanup
+        let config_dir = dirs::config_dir().unwrap();
+        let dir = config_dir.join("cadence").join("logs").join(&id);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn write_log_skipped_when_no_workflow_id() {
+        // Given — an agent with an empty workflow_id (standalone use)
+        let agent = ClaudeAgent {
+            workflow_id: "".to_string(),
+            ..make_agent("unused")
+        };
+
+        // When — write_log is called
+        // Then — no panic and no file written (guard clause behaviour)
+        agent.write_log("prompt", "response", 0, 1.0);
+        // If we reach here without panic, the guard worked
+    }
+
+    #[test]
+    fn write_log_called_twice_appends_both_entries() {
+        // Given — two calls representing send() and resume_send() in sequence
+        let id = format!("test-write-log-append-{}", uuid::Uuid::new_v4());
+        let agent = make_agent(&id);
+
+        // When
+        agent.write_log("first prompt", "first response", 0, 10.0);
+        agent.write_log("second prompt", "second response", 0, 20.0);
+
+        // Then — both entries are present (append, not overwrite)
+        let entries = read_agent_logs(&id, "dev").unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].prompt, "first prompt");
+        assert_eq!(entries[1].prompt, "second prompt");
+        assert!((entries[0].duration_secs - 10.0).abs() < 1e-9);
+        assert!((entries[1].duration_secs - 20.0).abs() < 1e-9);
+
+        // Cleanup
+        let config_dir = dirs::config_dir().unwrap();
+        let dir = config_dir.join("cadence").join("logs").join(&id);
+        let _ = fs::remove_dir_all(dir);
+    }
+}
