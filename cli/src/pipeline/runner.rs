@@ -236,7 +236,14 @@ fn make_agent(
         AgentRole::E2e => state.sessions.e2e.clone(),
         AgentRole::E2eVerifier => state.sessions.e2e_verify.clone(),
     };
-    ClaudeAgent::new(role, session_id, &state.repo_dir, config)
+    ClaudeAgent::new(
+        role,
+        session_id,
+        &state.repo_dir,
+        config,
+        state.id.clone(),
+        state.iteration,
+    )
 }
 
 fn log_stage(state: &WorkflowState, msg: &str) {
