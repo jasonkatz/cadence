@@ -105,12 +105,11 @@ impl WorkflowState {
         self.iteration += 1;
         self.regression_context = Some(context);
 
-        // Generate a fresh session ID for the regressed agent so the
-        // claude CLI doesn't conflict with the previous iteration's session.
-        match to {
-            Stage::Dev => self.sessions.dev = uuid::Uuid::new_v4().to_string(),
-            _ => {}
-        }
+        // Regenerate session IDs for agents that always use send() (not
+        // resume_send) so the claude CLI doesn't reject a reused session.
+        self.sessions.review = uuid::Uuid::new_v4().to_string();
+        self.sessions.e2e = uuid::Uuid::new_v4().to_string();
+        self.sessions.e2e_verify = uuid::Uuid::new_v4().to_string();
 
         let detail = format!("Regression (iter {})", self.iteration);
         self.transition(to, &detail);
