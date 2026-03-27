@@ -164,7 +164,7 @@ mod tests {
             requirements: None,
             error: None,
             pid: None,
-            personality: Personality::Default,
+            personality: Personality::None,
         }
     }
 

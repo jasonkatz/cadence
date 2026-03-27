@@ -13,7 +13,7 @@ mod notify;
 mod output;
 mod pipeline;
 
-use commands::{cancel, config_cmd, list, resume, run, status};
+use commands::{achievements_cmd, cancel, config_cmd, list, resume, run, status};
 
 #[derive(Parser)]
 #[command(name = "cadence")]
@@ -38,6 +38,8 @@ enum Commands {
     Cancel(cancel::CancelArgs),
     /// Manage configuration
     Config(config_cmd::ConfigArgs),
+    /// Show earned achievement badges
+    Achievements(achievements_cmd::AchievementsArgs),
 }
 
 #[tokio::main]
@@ -69,6 +71,7 @@ async fn main() {
         }
         Commands::Cancel(args) => cancel::run(args).await,
         Commands::Config(args) => config_cmd::run(args).await,
+        Commands::Achievements(args) => achievements_cmd::run(args).await,
     };
 
     if let Err(err) = result {

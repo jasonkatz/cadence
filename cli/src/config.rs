@@ -91,7 +91,7 @@ pub struct FunConfig {
 impl Default for FunConfig {
     fn default() -> Self {
         Self {
-            personality: Personality::Default,
+            personality: Personality::None,
             flair: true,
             betting: true,
         }
@@ -177,7 +177,7 @@ mod tests {
     #[test]
     fn default_fun_config() {
         let config = CadenceConfig::default();
-        assert_eq!(config.fun.personality, Personality::Default);
+        assert_eq!(config.fun.personality, Personality::None);
         assert!(config.fun.flair);
         assert!(config.fun.betting);
     }

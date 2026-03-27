@@ -4,8 +4,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum Personality {
+    /// No personality — plain status messages (the 3 real personalities are Pirate, Space, Cooking).
     #[default]
-    Default,
+    None,
     Pirate,
     Space,
     Cooking,
@@ -14,7 +15,7 @@ pub enum Personality {
 impl Personality {
     pub fn label(&self) -> &'static str {
         match self {
-            Personality::Default => "Default",
+            Personality::None => "Default",
             Personality::Pirate => "Pirate Crew 🏴‍☠️",
             Personality::Space => "Space Mission 🚀",
             Personality::Cooking => "Cooking Show 👨‍🍳",
@@ -23,7 +24,7 @@ impl Personality {
 
     pub fn stage_message(&self, stage: &str) -> String {
         match self {
-            Personality::Default => stage.to_string(),
+            Personality::None => stage.to_string(),
             Personality::Pirate => Self::pirate_stage(stage),
             Personality::Space => Self::space_stage(stage),
             Personality::Cooking => Self::cooking_stage(stage),
@@ -68,7 +69,7 @@ impl Personality {
 
     pub fn rework_message(&self, iteration: u32) -> String {
         match self {
-            Personality::Default => format!("Iteration {iteration} — fixing issues"),
+            Personality::None => format!("Iteration {iteration} — fixing issues"),
             Personality::Pirate => {
                 format!("Batten down the hatches! Iteration {iteration} — back to the map!")
             }
@@ -83,7 +84,7 @@ impl Personality {
 
     pub fn ci_pass_message(&self) -> &'static str {
         match self {
-            Personality::Default => "CI passed",
+            Personality::None => "CI passed",
             Personality::Pirate => "Arrr! The CI seas be calm and passin'!",
             Personality::Space => "All systems nominal — CI is go!",
             Personality::Cooking => "No smoke, no fire — CI baked to perfection!",
@@ -92,7 +93,7 @@ impl Personality {
 
     pub fn review_clean_message(&self) -> &'static str {
         match self {
-            Personality::Default => "Review clean — 0 comments",
+            Personality::None => "Review clean — 0 comments",
             Personality::Pirate => "Arrr, this be fine code! No complaints from the crew!",
             Personality::Space => "Mission control approves — zero anomalies detected",
             Personality::Cooking => "Head chef tasted it — no notes, flawless execution!",
@@ -103,7 +104,7 @@ impl Personality {
     /// prompts so PR comments reflect the chosen personality vibe.
     pub fn review_tone_instruction(&self) -> Option<&'static str> {
         match self {
-            Personality::Default => None,
+            Personality::None => None,
             Personality::Pirate => Some(
                 "You are a pirate crew member reviewing this code. \
                  Phrase all review feedback in pirate speak (e.g., \"Arrr, \
@@ -134,7 +135,7 @@ mod tests {
 
     #[test]
     fn default_passes_stage_name_through() {
-        let p = Personality::Default;
+        let p = Personality::None;
         assert_eq!(p.stage_message("Dev"), "Dev");
         assert_eq!(p.stage_message("In Review"), "In Review");
     }
@@ -160,7 +161,7 @@ mod tests {
     #[test]
     fn all_personalities_have_non_empty_labels() {
         for p in [
-            Personality::Default,
+            Personality::None,
             Personality::Pirate,
             Personality::Space,
             Personality::Cooking,
@@ -195,7 +196,7 @@ mod tests {
 
     #[test]
     fn default_has_no_review_tone_instruction() {
-        assert!(Personality::Default.review_tone_instruction().is_none());
+        assert!(Personality::None.review_tone_instruction().is_none());
     }
 
     #[test]

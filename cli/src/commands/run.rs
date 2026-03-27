@@ -89,7 +89,7 @@ pub async fn run(args: RunArgs, config: &CadenceConfig) -> Result<()> {
                 requirements: args.requirements.clone(),
                 error: None,
                 pid: None,
-                personality: crate::flair::Personality::Default,
+                personality: crate::flair::Personality::None,
             },
             &f,
         )
@@ -113,7 +113,7 @@ pub async fn run(args: RunArgs, config: &CadenceConfig) -> Result<()> {
         requirements: args.requirements,
         error: None,
         pid: Some(std::process::id()),
-        personality: crate::flair::Personality::Default,
+        personality: crate::flair::Personality::None,
     };
 
     let config = if let Some(model) = args.model {

@@ -215,3 +215,105 @@ fn requirements_context(state: &WorkflowState) -> String {
         None => "Requirements: see TASK description above".to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use chrono::Utc;
+
+    use super::*;
+    use crate::pipeline::stage::Stage;
+    use crate::pipeline::state::{SessionIds, WorkflowState};
+
+    fn make_state() -> WorkflowState {
+        let now = Utc::now();
+        WorkflowState {
+            id: "test1234".to_string(),
+            task: "add feature".to_string(),
+            repo: "owner/repo".to_string(),
+            repo_dir: PathBuf::from("/tmp/repo"),
+            branch: "dev/test1234".to_string(),
+            stage: Stage::InReview,
+            iteration: 1,
+            max_iters: 8,
+            pr_number: Some(42),
+            started_at: now,
+            updated_at: now,
+            sessions: SessionIds {
+                dev: "dev".to_string(),
+                review: "review".to_string(),
+                e2e: "e2e".to_string(),
+                e2e_verify: "verify".to_string(),
+            },
+            history: vec![],
+            regression_context: None,
+            requirements: None,
+            error: None,
+            pid: None,
+            personality: Personality::None,
+        }
+    }
+
+    #[test]
+    fn review_prompt_none_personality_has_no_tone_prefix() {
+        let state = make_state();
+        let prompt = review_prompt(&state, Personality::None);
+        // Prompt should start with the "You are reviewing" content, not a tone instruction
+        assert!(prompt.starts_with("You are reviewing"));
+    }
+
+    #[test]
+    fn review_prompt_pirate_personality_injects_tone() {
+        let state = make_state();
+        let prompt = review_prompt(&state, Personality::Pirate);
+        // Tone instruction must appear before the review body
+        assert!(
+            prompt.to_lowercase().contains("pirate"),
+            "Pirate personality should inject pirate tone into review prompt"
+        );
+        let pirate_pos = prompt.to_lowercase().find("pirate").unwrap();
+        let body_pos = prompt.find("You are reviewing").unwrap();
+        assert!(
+            pirate_pos < body_pos,
+            "Tone instruction must precede the review body"
+        );
+    }
+
+    #[test]
+    fn review_prompt_space_personality_injects_tone() {
+        let state = make_state();
+        let prompt = review_prompt(&state, Personality::Space);
+        assert!(
+            prompt.to_lowercase().contains("mission control"),
+            "Space personality should inject mission control tone"
+        );
+    }
+
+    #[test]
+    fn review_prompt_cooking_personality_injects_tone() {
+        let state = make_state();
+        let prompt = review_prompt(&state, Personality::Cooking);
+        assert!(
+            prompt.to_lowercase().contains("chef"),
+            "Cooking personality should inject chef tone"
+        );
+    }
+
+    #[test]
+    fn update_pr_prompt_includes_badges_when_provided() {
+        let state = make_state();
+        let badges = vec!["🎯 First Pipeline".to_string(), "⚡ Speed Run".to_string()];
+        let prompt = update_pr_prompt(&state, &badges);
+        assert!(prompt.contains("Achievements"), "Badge section header missing");
+        assert!(prompt.contains("🎯 First Pipeline"));
+        assert!(prompt.contains("⚡ Speed Run"));
+    }
+
+    #[test]
+    fn update_pr_prompt_omits_badge_section_when_empty() {
+        let state = make_state();
+        let prompt = update_pr_prompt(&state, &[]);
+        assert!(!prompt.contains("Achievements"), "Badge section should be absent when no badges");
+    }
+}

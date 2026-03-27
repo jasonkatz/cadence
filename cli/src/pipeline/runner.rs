@@ -42,7 +42,7 @@ pub async fn run_pipeline(state: &mut WorkflowState, config: &CadenceConfig) -> 
             ));
             state.transition(Stage::Failed, "max iterations exceeded");
             state.save()?;
-            if flair_on {
+            if sad_trombone_should_fire(flair_on, state.iteration, state.max_iters) {
                 print_sad_trombone();
             }
             notify_stage(state, config).await;
@@ -272,7 +272,7 @@ pub async fn run_pipeline(state: &mut WorkflowState, config: &CadenceConfig) -> 
                 }
 
                 // ASCII confetti on first-try pass
-                if flair_on && state.iteration <= 1 {
+                if confetti_should_fire(flair_on, state.iteration) {
                     print_confetti();
                 }
 
@@ -466,6 +466,18 @@ async fn notify_stage(state: &WorkflowState, config: &CadenceConfig) {
     }
 }
 
+/// Returns true when ASCII confetti should fire — requires flair enabled and
+/// a first-try pass (iteration 1 means no rework cycles occurred).
+fn confetti_should_fire(flair_on: bool, iteration: u32) -> bool {
+    flair_on && iteration <= 1
+}
+
+/// Returns true when the sad trombone should fire — requires flair enabled and
+/// the iteration counter has exceeded max_iters (checked at loop top).
+fn sad_trombone_should_fire(flair_on: bool, iteration: u32, max_iters: u32) -> bool {
+    flair_on && iteration > max_iters
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -506,5 +518,41 @@ mod tests {
     fn parse_e2e_pass_inline() {
         let text = r#"The result is: "e2e_pass": true, everything looks good."#;
         assert!(parse_e2e_result(text));
+    }
+
+    #[test]
+    fn confetti_fires_on_first_try_with_flair_on() {
+        // Confetti requires flair enabled AND first-try pass (iteration <= 1)
+        assert!(confetti_should_fire(true, 1));
+        assert!(confetti_should_fire(true, 0));
+    }
+
+    #[test]
+    fn confetti_suppressed_without_flair() {
+        assert!(!confetti_should_fire(false, 1));
+    }
+
+    #[test]
+    fn confetti_suppressed_after_rework() {
+        // Any iteration > 1 means it was not a first-try pass
+        assert!(!confetti_should_fire(true, 2));
+        assert!(!confetti_should_fire(true, 8));
+    }
+
+    #[test]
+    fn sad_trombone_fires_when_over_limit_with_flair_on() {
+        // Fires when iteration exceeds max_iters (runner increments before the check)
+        assert!(sad_trombone_should_fire(true, 9, 8));
+    }
+
+    #[test]
+    fn sad_trombone_suppressed_without_flair() {
+        assert!(!sad_trombone_should_fire(false, 9, 8));
+    }
+
+    #[test]
+    fn sad_trombone_suppressed_when_within_limit() {
+        assert!(!sad_trombone_should_fire(true, 8, 8));
+        assert!(!sad_trombone_should_fire(true, 1, 8));
     }
 }
