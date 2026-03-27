@@ -12,7 +12,7 @@ describe("AchievementBadges", () => {
     expect(screen.getByText("First Pipeline")).toBeInTheDocument();
     expect(screen.getByText("Zero-Comment Review")).toBeInTheDocument();
     expect(screen.getByText("Workflow Veteran")).toBeInTheDocument();
-    expect(screen.getByText("Max Iterator")).toBeInTheDocument();
+    expect(screen.getByText("Survived Max Iterations")).toBeInTheDocument();
     expect(screen.getByText("Speed Run")).toBeInTheDocument();
   });
 

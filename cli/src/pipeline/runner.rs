@@ -137,7 +137,7 @@ pub async fn run_pipeline(state: &mut WorkflowState, config: &CadenceConfig) -> 
                 pr::clear_review_comments(&state.repo, pr_num).await?;
 
                 let agent = make_agent(AgentRole::Reviewer, state, config);
-                let prompt = prompts::review_prompt(state);
+                let prompt = prompts::review_prompt(state, personality);
                 let response = agent.send(&prompt).await?;
                 log_agent_done(AgentRole::Reviewer, &response.text);
 

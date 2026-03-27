@@ -31,9 +31,31 @@ describe("AgentTheater", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows demo disclaimer text", () => {
+  it("shows demo disclaimer text when no live data", () => {
     render(<AgentTheater />);
     expect(screen.getByText(/demo simulation/i)).toBeInTheDocument();
+  });
+
+  it("shows Live badge and hides replay button when live data is provided", () => {
+    const liveState = {
+      id: "abc123",
+      task: "add dark mode toggle",
+      stage: "dev",
+      iteration: 1,
+      max_iters: 8,
+      pr_number: null,
+      branch: "dev/abc123",
+      repo: "owner/repo",
+      started_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      error: null,
+    };
+    render(<AgentTheater pipelineState={liveState} />);
+    // The "🔴 Live" badge should appear (distinct from the heading "Live Agent Theater")
+    expect(screen.getByText(/🔴 Live/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /replay demo/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows iteration counter", () => {

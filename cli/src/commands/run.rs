@@ -133,24 +133,25 @@ pub async fn run(args: RunArgs, config: &CadenceConfig) -> Result<()> {
     eprintln!("  Personality: {}", config.fun.personality.label());
     eprintln!();
 
-    // Iteration betting pool: record prediction before the pipeline starts
+    // Iteration betting pool: show prediction and ask user to agree or override
     if config.fun.betting {
         let predicted = betting::predict_iterations(&state.task);
 
         if let Ok(mut ledger) = betting::BettingLedger::load() {
-            // Show historical accuracy before placing a new bet
+            // Show historical accuracy before the user places their bet
             let accuracy_note = match (ledger.exact_accuracy_pct(), ledger.close_accuracy_pct()) {
                 (Some(exact), Some(close)) => {
                     format!("  Historical accuracy: {exact:.0}% exact, {close:.0}% within ±1\n")
                 }
                 _ => String::new(),
             };
-            betting::print_prediction(&id, &state.task, predicted, &accuracy_note);
+            let final_bet =
+                betting::prompt_user_bet(&id, &state.task, predicted, &accuracy_note);
 
             ledger.place(Bet {
                 workflow_id: id.clone(),
                 task: state.task.clone(),
-                predicted_iters: predicted,
+                predicted_iters: final_bet,
                 actual_iters: None,
                 placed_at: now,
             });

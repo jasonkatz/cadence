@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useApi } from "../hooks/useApi";
 import { AgentTheater } from "../components/AgentTheater";
 import { AchievementBadges } from "../components/AchievementBadges";
+import { usePipelineState, type PipelineState } from "../hooks/usePipelineState";
 
 function DashboardPage() {
   const { user, logout } = useAuth();
@@ -12,6 +13,20 @@ function DashboardPage() {
     queryKey: ["me"],
     queryFn: () => api.get<{ id: string; email: string; name?: string }>("/auth/me"),
   });
+
+  // Poll for the active workflow id so the theater can connect to its SSE stream.
+  const { data: activeWorkflow } = useQuery({
+    queryKey: ["workflows", "active"],
+    queryFn: () =>
+      api
+        .get<PipelineState>("/workflows/active")
+        .catch(() => null),
+    refetchInterval: 5000,
+  });
+
+  const { state: pipelineState } = usePipelineState(
+    activeWorkflow?.id ?? null,
+  );
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -38,8 +53,8 @@ function DashboardPage() {
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 sm:px-0 space-y-6">
-          {/* Live Agent Theater */}
-          <AgentTheater />
+          {/* Live Agent Theater — shows real pipeline state when a run is active */}
+          <AgentTheater pipelineState={pipelineState} />
 
           {/* Achievement Badges */}
           <AchievementBadges earned={[]} />

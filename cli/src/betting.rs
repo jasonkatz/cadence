@@ -120,9 +120,14 @@ const COMPLEX_KEYWORDS: &[&str] = &[
     "integration",
 ];
 
-/// Print the iteration prediction. `accuracy_note` is an optional pre-formatted
-/// line showing historical accuracy stats (empty string = no stats yet).
-pub fn print_prediction(workflow_id: &str, task: &str, predicted: u32, accuracy_note: &str) {
+/// Display the prediction header and prompt the user to agree or enter their own
+/// estimate. Returns the iteration count that should be recorded as the bet.
+pub fn prompt_user_bet(
+    workflow_id: &str,
+    task: &str,
+    predicted: u32,
+    accuracy_note: &str,
+) -> u32 {
     eprintln!("\n\x1b[1;36m╔══════════════════════════════════════════╗\x1b[0m");
     eprintln!("\x1b[1;36m║        🎲 Iteration Betting Pool          ║\x1b[0m");
     eprintln!("\x1b[1;36m╚══════════════════════════════════════════╝\x1b[0m");
@@ -132,7 +137,25 @@ pub fn print_prediction(workflow_id: &str, task: &str, predicted: u32, accuracy_
         eprint!("{accuracy_note}");
     }
     eprintln!("  Workflow:   {workflow_id}");
-    eprintln!("  Prediction recorded — let's see how it goes!\n");
+    eprint!(
+        "\n  Agree? Press Enter to accept, or type your own estimate and press Enter: "
+    );
+
+    let mut input = String::new();
+    if std::io::stdin().read_line(&mut input).is_ok() {
+        let trimmed = input.trim();
+        if !trimmed.is_empty() {
+            if let Ok(n) = trimmed.parse::<u32>() {
+                if n > 0 {
+                    eprintln!("  Your bet: \x1b[1;33m{n} iteration(s)\x1b[0m — recorded!\n");
+                    return n;
+                }
+            }
+        }
+    }
+
+    eprintln!("  Bet accepted: \x1b[1;33m{predicted} iteration(s)\x1b[0m — let's see how it goes!\n");
+    predicted
 }
 
 pub fn print_result(predicted: u32, actual: u32) {

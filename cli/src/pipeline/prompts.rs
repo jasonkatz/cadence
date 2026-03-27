@@ -1,3 +1,4 @@
+use crate::flair::Personality;
 use crate::pipeline::state::WorkflowState;
 
 pub fn dev_implement_prompt(state: &WorkflowState) -> String {
@@ -80,11 +81,16 @@ pub fn dev_feedback_prompt(state: &WorkflowState, feedback: &str) -> String {
     )
 }
 
-pub fn review_prompt(state: &WorkflowState) -> String {
+pub fn review_prompt(state: &WorkflowState, personality: Personality) -> String {
     let req_context = requirements_context(state);
+    let tone_prefix = personality
+        .review_tone_instruction()
+        .map(|t| format!("{t}\n\n"))
+        .unwrap_or_default();
 
     format!(
-        "You are reviewing PR #{pr_num} on {repo}.\n\
+        "{tone_prefix}\
+         You are reviewing PR #{pr_num} on {repo}.\n\
          Branch: {branch}\n\
          {req_context}\n\n\
          TASK BEING REVIEWED: {task}\n\n\

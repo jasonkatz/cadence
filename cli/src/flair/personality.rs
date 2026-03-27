@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// Team vibe that affects status messages only — not the code agents produce.
+/// Team vibe that affects status messages and PR comment tone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum Personality {
@@ -98,6 +98,34 @@ impl Personality {
             Personality::Cooking => "Head chef tasted it — no notes, flawless execution!",
         }
     }
+
+    /// Returns an optional system-level tone instruction to prepend to reviewer
+    /// prompts so PR comments reflect the chosen personality vibe.
+    pub fn review_tone_instruction(&self) -> Option<&'static str> {
+        match self {
+            Personality::Default => None,
+            Personality::Pirate => Some(
+                "You are a pirate crew member reviewing this code. \
+                 Phrase all review feedback in pirate speak (e.g., \"Arrr, \
+                 this function be missin' error handling, matey!\"). \
+                 Keep the technical critique accurate — only the tone changes.",
+            ),
+            Personality::Space => Some(
+                "You are a mission control specialist reviewing this code. \
+                 Frame all review feedback as mission briefings and telemetry \
+                 reports (e.g., \"Anomaly detected in navigation subsystem — \
+                 error handler missing on re-entry path\"). \
+                 Keep the technical critique accurate — only the tone changes.",
+            ),
+            Personality::Cooking => Some(
+                "You are a head chef reviewing this code as if it were a recipe. \
+                 Frame all review feedback as culinary critique \
+                 (e.g., \"This function needs more seasoning — the error case \
+                 is under-cooked and will leave users hungry for a proper response\"). \
+                 Keep the technical critique accurate — only the tone changes.",
+            ),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -163,5 +191,29 @@ mod tests {
     fn unknown_stage_falls_through_to_name_for_pirate() {
         let msg = Personality::Pirate.stage_message("SomethingUnknown");
         assert_eq!(msg, "SomethingUnknown");
+    }
+
+    #[test]
+    fn default_has_no_review_tone_instruction() {
+        assert!(Personality::Default.review_tone_instruction().is_none());
+    }
+
+    #[test]
+    fn non_default_personalities_have_review_tone_instructions() {
+        for p in [Personality::Pirate, Personality::Space, Personality::Cooking] {
+            assert!(
+                p.review_tone_instruction().is_some(),
+                "{p:?} missing review tone instruction"
+            );
+        }
+    }
+
+    #[test]
+    fn pirate_review_tone_mentions_pirate() {
+        let instruction = Personality::Pirate.review_tone_instruction().unwrap();
+        assert!(
+            instruction.to_lowercase().contains("pirate"),
+            "Pirate review tone should reference pirate theme"
+        );
     }
 }

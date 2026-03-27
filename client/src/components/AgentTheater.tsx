@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import type { PipelineState } from "../hooks/usePipelineState";
 
 type AgentStatus = "idle" | "working" | "done" | "waiting";
 
@@ -200,18 +201,57 @@ function StageIndicator({
   );
 }
 
-export function AgentTheater() {
-  const [agents, setAgents] = useState<AgentState[]>(INITIAL_AGENTS);
-  const [stageIndex, setStageIndex] = useState(0);
+// Map pipeline stage strings (as serialized by Rust) to THEATER_STAGES indices.
+const STAGE_NAME_TO_INDEX: Record<string, number> = {
+  pending: 0,
+  dev: 0,
+  "in-review": 1,
+  verification: 2,
+  "final-signoff": 3,
+  complete: 4,
+  failed: 4,
+  cancelled: 4,
+};
+
+interface AgentTheaterProps {
+  /** When provided the theater reflects this live workflow state instead of
+   *  running the built-in demo simulation. */
+  pipelineState?: PipelineState | null;
+}
+
+export function AgentTheater({ pipelineState }: AgentTheaterProps = {}) {
+  const isLive = pipelineState != null;
+
+  // --- Live-data-derived values ---
+  const liveStageIndex = useMemo(() => {
+    if (!pipelineState) return 0;
+    return STAGE_NAME_TO_INDEX[pipelineState.stage] ?? 0;
+  }, [pipelineState]);
+
+  const liveIteration = pipelineState?.iteration ?? 1;
+  const liveIsComplete =
+    pipelineState?.stage === "complete" ||
+    pipelineState?.stage === "failed" ||
+    pipelineState?.stage === "cancelled";
+
+  // --- Demo-simulation state (only used when !isLive) ---
+  const [demoStageIndex, setDemoStageIndex] = useState(0);
+  const [demoIteration, setDemoIteration] = useState(1);
+  const [demoIsRunning, setDemoIsRunning] = useState(true);
+
   const [speechIndex, setSpeechIndex] = useState(0);
-  const [iteration, setIteration] = useState(1);
-  const [isRunning, setIsRunning] = useState(true);
+  const [agents, setAgents] = useState<AgentState[]>(INITIAL_AGENTS);
+
+  const stageIndex = isLive ? liveStageIndex : demoStageIndex;
+  const iteration = isLive ? liveIteration : demoIteration;
+  const isComplete = isLive ? liveIsComplete : (demoStageIndex === THEATER_STAGES.length - 1 && !demoIsRunning);
 
   const currentStage = THEATER_STAGES[stageIndex];
 
   // Cycle through speeches for the active agent
   useEffect(() => {
-    if (!isRunning) return;
+    if (isLive && isComplete) return;
+    if (!isLive && !demoIsRunning) return;
 
     const activeAgentName = currentStage?.activeAgent;
     if (!activeAgentName) return;
@@ -224,22 +264,22 @@ export function AgentTheater() {
     }, 2000);
 
     return () => clearInterval(speechTimer);
-  }, [stageIndex, isRunning, currentStage]);
+  }, [stageIndex, isLive, isComplete, demoIsRunning, currentStage]);
 
-  // Advance stage every ~10 seconds
+  // Demo: advance stage every ~10 seconds (disabled in live mode)
   useEffect(() => {
-    if (!isRunning) return;
+    if (isLive || !demoIsRunning) return;
 
     const stageTimer = setInterval(() => {
-      setStageIndex((i) => {
+      setDemoStageIndex((i) => {
         const next = i + 1;
         if (next >= THEATER_STAGES.length - 1) {
           // Simulate a rework then complete
-          if (iteration < 2) {
-            setIteration((it) => it + 1);
-            return 0; // loop back to Dev
+          if (demoIteration < 2) {
+            setDemoIteration((it) => it + 1);
+            return 0;
           }
-          setIsRunning(false);
+          setDemoIsRunning(false);
           return THEATER_STAGES.length - 1;
         }
         return next;
@@ -248,7 +288,7 @@ export function AgentTheater() {
     }, 10000);
 
     return () => clearInterval(stageTimer);
-  }, [isRunning, iteration]);
+  }, [isLive, demoIsRunning, demoIteration]);
 
   // Sync agent statuses with current stage
   useEffect(() => {
@@ -276,13 +316,11 @@ export function AgentTheater() {
 
   const handleReset = () => {
     setAgents(INITIAL_AGENTS);
-    setStageIndex(0);
+    setDemoStageIndex(0);
     setSpeechIndex(0);
-    setIteration(1);
-    setIsRunning(true);
+    setDemoIteration(1);
+    setDemoIsRunning(true);
   };
-
-  const isComplete = stageIndex === THEATER_STAGES.length - 1 && !isRunning;
 
   return (
     <div className="bg-white shadow rounded-2xl p-6 space-y-6">
@@ -299,17 +337,24 @@ export function AgentTheater() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {isLive && (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 px-3 py-1 rounded-full border border-blue-200">
+              🔴 Live
+            </span>
+          )}
           {isComplete && (
             <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 px-3 py-1 rounded-full border border-green-200">
               ✅ Complete
             </span>
           )}
-          <button
-            onClick={handleReset}
-            className="text-xs text-gray-500 hover:text-gray-700 underline"
-          >
-            Replay demo
-          </button>
+          {!isLive && (
+            <button
+              onClick={handleReset}
+              className="text-xs text-gray-500 hover:text-gray-700 underline"
+            >
+              Replay demo
+            </button>
+          )}
         </div>
       </div>
 
@@ -352,9 +397,17 @@ export function AgentTheater() {
         </div>
       )}
 
-      <p className="text-xs text-gray-400 text-center">
-        Demo simulation — connects to live pipeline data when available
-      </p>
+      {isLive && pipelineState?.task && (
+        <p className="text-xs text-gray-500 text-center truncate">
+          {pipelineState.task}
+        </p>
+      )}
+
+      {!isLive && (
+        <p className="text-xs text-gray-400 text-center">
+          Demo simulation — start a pipeline to see live data
+        </p>
+      )}
     </div>
   );
 }

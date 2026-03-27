@@ -26,7 +26,7 @@ const ALL_ACHIEVEMENTS: AchievementDef[] = [
   },
   {
     id: "survived-max-iters",
-    label: "Max Iterator",
+    label: "Survived Max Iterations",
     description: "Survived all 8 iterations and still shipped",
     icon: "💪",
   },

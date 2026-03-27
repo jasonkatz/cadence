@@ -10,6 +10,7 @@ import { errorHandler } from "./middleware/error-handler";
 import healthRoutes from "./routes/health";
 import docsRoutes from "./routes/docs";
 import authRoutes from "./routes/auth";
+import workflowRoutes from "./routes/workflows";
 
 const app = express();
 
@@ -27,6 +28,7 @@ authenticatedRouter.use(requireAuth);
 authenticatedRouter.use(extractUser);
 authenticatedRouter.use(rateLimiter);
 authenticatedRouter.use(authRoutes);
+authenticatedRouter.use(workflowRoutes);
 
 app.use("/v1", authenticatedRouter);
 
