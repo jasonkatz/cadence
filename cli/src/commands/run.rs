@@ -89,6 +89,7 @@ pub async fn run(args: RunArgs, config: &CadenceConfig) -> Result<()> {
                 requirements: args.requirements.clone(),
                 error: None,
                 pid: None,
+                personality: crate::flair::Personality::Default,
             },
             &f,
         )
@@ -112,6 +113,7 @@ pub async fn run(args: RunArgs, config: &CadenceConfig) -> Result<()> {
         requirements: args.requirements,
         error: None,
         pid: Some(std::process::id()),
+        personality: crate::flair::Personality::Default,
     };
 
     let config = if let Some(model) = args.model {
@@ -121,6 +123,8 @@ pub async fn run(args: RunArgs, config: &CadenceConfig) -> Result<()> {
     } else {
         CadenceConfig::load()?
     };
+
+    state.personality = config.fun.personality;
 
     eprintln!("\n\x1b[1;34m╔══════════════════════════════════════╗\x1b[0m");
     eprintln!("\x1b[1;34m║  Cadence — Multi-Agent SDLC Pipeline ║\x1b[0m");

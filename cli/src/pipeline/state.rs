@@ -5,6 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::config::CadenceConfig;
+use crate::flair::Personality;
 use crate::pipeline::stage::Stage;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,6 +27,10 @@ pub struct WorkflowState {
     pub requirements: Option<String>,
     pub error: Option<String>,
     pub pid: Option<u32>,
+    /// Personality selected for this run — serialized so the dashboard can
+    /// rename stage labels (e.g. Space Mission: "Launch", "Orbit", "Re-entry").
+    #[serde(default)]
+    pub personality: Personality,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,6 +164,7 @@ mod tests {
             requirements: None,
             error: None,
             pid: None,
+            personality: Personality::Default,
         }
     }
 
