@@ -76,14 +76,14 @@ Step
 ├── id            uuid
 ├── workflow_id   uuid
 ├── iteration     integer           # which iteration this belongs to
-├── kind          StepKind
+├── type          StepType
 ├── status        StepStatus
 ├── started_at    timestamp | null
 ├── finished_at   timestamp | null
 ├── detail        text | null       # human-readable summary of outcome
 ```
 
-**StepKind** (the fixed pipeline stages):
+**StepType** (the fixed pipeline stages):
 
 ```
 dev             # implement the task
@@ -120,9 +120,9 @@ Agent (configuration, not a database row)
 ├── allowed_tools text               # comma-separated tool list
 ```
 
-**AgentRole → StepKind mapping:**
+**AgentRole → StepType mapping:**
 
-| AgentRole     | Executes StepKind | Can write code? |
+| AgentRole     | Executes StepType | Can write code? |
 |---------------|-------------------|-----------------|
 | dev           | dev               | Yes             |
 | reviewer      | review            | No (read-only)  |
@@ -151,7 +151,7 @@ Run
 ├── created_at    timestamp
 ```
 
-A Step may produce multiple Runs (e.g., the dev step does an implementation run and then a PR-update run via `resume_send`). Runs are append-only and immutable.
+A Step may produce multiple Runs (e.g., the dev step does an implementation run and then a PR-update run). Runs are append-only and immutable.
 
 ## State machine: how a Workflow executes
 
@@ -174,7 +174,7 @@ review failed   → new iteration, dev step gets review comments
 e2e failed      → new iteration, dev step gets verifier feedback
 ```
 
-Regression increments the iteration counter and creates a fresh set of Steps. The dev agent receives the failure context as its prompt, so it knows what to fix. The dev agent's session is preserved across iterations (via `resume_send`) so it retains memory of prior work. Reviewer, E2E, and E2E verifier get fresh sessions each iteration.
+Regression increments the iteration counter and creates a fresh set of Steps. The dev agent receives the failure context as its prompt, so it knows what to fix. All agents — including the dev agent — get fresh sessions each iteration. The dev agent's prompt is augmented with the failure feedback so it has the context needed to address the issue.
 
 If `iteration > max_iters`, the workflow transitions to `failed`.
 

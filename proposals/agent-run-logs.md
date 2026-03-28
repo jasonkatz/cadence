@@ -117,8 +117,7 @@ Response:
 
 ### Write path
 
-Logging happens inside `ClaudeAgent` after each `send()` and
-`resume_send()` call. The agent already captures stdout and exit code;
+Logging happens inside `ClaudeAgent` after each `send()` call. The agent already captures stdout and exit code;
 we add:
 
 - A `std::time::Instant` before the subprocess spawns to measure
@@ -143,7 +142,7 @@ abort the pipeline.
 | `cli/src/commands/logs.rs` | **New.** `LogsArgs`, `run()` handler, formatted + raw output |
 | `cli/src/commands/mod.rs` | Add `pub mod logs` |
 | `cli/src/main.rs` | Register `Logs` variant in `Commands` enum, wire to handler |
-| `cli/src/agent/claude.rs` | Add `workflow_id` and `iteration` fields to `ClaudeAgent`. Add timing + `write_log()` to `send()` and `resume_send()` |
+| `cli/src/agent/claude.rs` | Add `workflow_id` and `iteration` fields to `ClaudeAgent`. Add timing + `write_log()` to `send()` |
 | `cli/src/pipeline/runner.rs` | Pass `state.id` and `state.iteration` through `make_agent()` to `ClaudeAgent::new()` |
 
 ### What this does NOT include

@@ -106,61 +106,6 @@ impl ClaudeAgent {
         Ok(AgentResponse { text, exit_code })
     }
 
-    pub async fn resume_send(&self, prompt: &str) -> Result<AgentResponse> {
-        let mut cmd = Command::new("claude");
-
-        cmd.arg("--print")
-            .arg("--output-format")
-            .arg("json")
-            .arg("--resume")
-            .arg(&self.session_id)
-            .arg("--model")
-            .arg(&self.model)
-            .arg("--permission-mode")
-            .arg(&self.permission_mode)
-            .arg("--allowedTools")
-            .arg(self.role.allowed_tools())
-            .arg("--name")
-            .arg(format!("cadence-{}", self.role));
-
-        if let Some(budget) = self.budget_usd {
-            cmd.arg("--max-budget-usd").arg(budget.to_string());
-        }
-
-        cmd.arg(prompt);
-        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-        cmd.current_dir(&self.repo_dir);
-
-        let output = tokio::time::timeout(
-            std::time::Duration::from_secs(self.timeout_secs),
-            cmd.output(),
-        )
-        .await
-        .with_context(|| {
-            format!(
-                "agent {} timed out after {}s",
-                self.role, self.timeout_secs
-            )
-        })?
-        .with_context(|| format!("spawning claude for agent {}", self.role))?;
-
-        let exit_code = output.status.code().unwrap_or(-1);
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-
-        if !output.status.success() && stdout.is_empty() {
-            bail!(
-                "agent {} exited with code {}: {}",
-                self.role,
-                exit_code,
-                stderr.trim()
-            );
-        }
-
-        let text = extract_text_from_json(&stdout).unwrap_or(stdout);
-
-        Ok(AgentResponse { text, exit_code })
-    }
 }
 
 fn extract_text_from_json(raw: &str) -> Option<String> {
