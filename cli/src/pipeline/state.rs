@@ -105,8 +105,8 @@ impl WorkflowState {
         self.iteration += 1;
         self.regression_context = Some(context);
 
-        // Regenerate session IDs for agents that always use send() (not
-        // resume_send) so the claude CLI doesn't reject a reused session.
+        // All agents get fresh sessions on regression
+        self.sessions.dev = uuid::Uuid::new_v4().to_string();
         self.sessions.review = uuid::Uuid::new_v4().to_string();
         self.sessions.e2e = uuid::Uuid::new_v4().to_string();
         self.sessions.e2e_verify = uuid::Uuid::new_v4().to_string();

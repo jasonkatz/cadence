@@ -72,11 +72,17 @@ pub async fn run_pipeline(state: &mut WorkflowState, config: &CadenceConfig) -> 
 
                 state.regression_context = None;
 
-                // Update PR title and description to reflect current changes
+                // Update PR title and description with a fresh agent session
                 let pr_num = state.pr_number.unwrap();
                 log_stage(state, "Updating PR title and description");
+                let update_agent = ClaudeAgent::new(
+                    AgentRole::Dev,
+                    uuid::Uuid::new_v4().to_string(),
+                    &state.repo_dir,
+                    config,
+                );
                 let update_prompt = prompts::update_pr_prompt(state);
-                let _ = agent.resume_send(&update_prompt).await?;
+                let _ = update_agent.send(&update_prompt).await?;
 
                 // Wait for GHA before review
                 log_stage(state, "Waiting for CI");
