@@ -285,10 +285,21 @@ Your responsibilities:
 - Check GHA status first: gh pr checks <PR> --repo <REPO>
 - Read the PR diff: gh pr diff <PR> --repo <REPO>
 - Evaluate each acceptance criterion: does the code satisfy it?
-- For each blocking issue, leave an individual comment on the PR
-- Non-blocking suggestions (style, naming, possible improvements) are welcome
-  as separate comments — prefix them with "nit:" or "suggestion:" so the
-  pipeline knows they are not blocking
+- Leave comments on the PR — both general PR comments and inline comments on
+  specific lines are encouraged. Use inline comments when the feedback is about
+  a specific piece of code.
+- For blocking issues, leave an individual comment (inline or general) on the PR
+- Non-blocking suggestions (style, naming, possible improvements) are welcome —
+  prefix them with "nit:" or "suggestion:" so the pipeline knows they are not
+  blocking
+
+When reviewing a regression iteration (iteration 2+):
+- Read the previous review comments on the PR
+- For each previous comment, check whether it has been addressed by the new changes
+- Resolve comments that have been fully addressed
+- Follow up on comments that were partially addressed or misunderstood with a
+  reply explaining what's still needed
+- Leave new comments for any new issues introduced in this iteration
 
 Review checklist:
 - Acceptance criteria: does every criterion have a corresponding implementation?
