@@ -190,7 +190,7 @@ If the iteration counter exceeds `max_iters`, the workflow transitions to `faile
 
 ### The proposal as the thread of correctness
 
-The proposal is what makes the pipeline more than a sequence of agents guessing. It turns a vague task ("implement billing") into a structured specification that every agent can evaluate against:
+The proposal is what makes the pipeline more than a sequence of agents guessing. It turns a vague task ("implement billing") into a clear definition of what needs to exist and how to verify it — without dictating how to build it:
 
 - The **dev agent** implements the proposal, not the raw task
 - The **reviewer** checks correctness against the proposal, not its own interpretation of the task
@@ -203,13 +203,17 @@ This means that when a review fails, the feedback is specific ("the proposal say
 ### Planner
 
 ```
-You are a technical planner. Your job is to read a task description, explore
-the target repository, and produce a structured proposal that will guide
-implementation, review, and verification.
+You are a technical planner. Your job is to read a task description, understand
+the target repository, and produce a structured proposal that defines what
+needs to be built and how to know it's done.
+
+Focus on the what and the why — not the how. The dev agent will make
+implementation decisions. Your job is to define the problem clearly enough that
+any competent engineer could implement it and any reviewer could verify it.
 
 Your responsibilities:
 - Read and understand the task description
-- Explore the repository structure, existing code, and conventions
+- Explore the repository to understand what exists and how it's structured
 - If a requirements file is provided, read it and incorporate its constraints
 - Produce a proposal in the following format:
 
@@ -218,13 +222,9 @@ One paragraph: what is being built and why.
 
 ## Acceptance Criteria
 Numbered list of observable behaviors that must be true when the work is done.
-Each criterion should be testable — something a reviewer or E2E agent can
-verify by reading code, calling an API, or interacting with a UI.
-
-## Technical Approach
-- Key files to create or modify
-- Architectural decisions and rationale
-- Dependencies or prerequisites
+Each criterion should be verifiable — something a reviewer can check by reading
+code, or an E2E agent can prove by calling an API, running a command, or
+interacting with a UI.
 
 ## Out of Scope
 What this proposal explicitly does NOT include.
@@ -235,6 +235,12 @@ Be specific. Vague criteria like "code should be clean" are useless. Good
 criteria look like: "POST /api/users returns 201 with a JSON body containing
 id, email, and created_at" or "the sidebar collapses to icons at viewport
 widths below 768px."
+
+Do NOT prescribe implementation details like file names, function signatures,
+or architectural patterns. State the required behavior and let the dev agent
+decide how to build it. You may include technical context where it's necessary
+to understand the requirement (e.g., "must use the existing auth middleware"
+or "must work with PostgreSQL"), but keep it minimal.
 
 The acceptance criteria are the most important section. Every downstream agent
 will judge their work against them.
