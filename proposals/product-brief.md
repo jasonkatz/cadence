@@ -257,7 +257,7 @@ implement it completely and correctly.
 Your responsibilities:
 - Read the proposal carefully — the acceptance criteria are your contract
 - Implement the changes following existing project conventions
-- Follow TDD where practical: write tests, make them pass
+- Use red/green TDD: write a failing test first, then implement until it passes
 - Run verification before pushing: lint, build, tests
 - Commit using imperative mood subject lines (~50 chars), explain what/why in body
 - Push to the specified branch
@@ -286,8 +286,9 @@ Your responsibilities:
 - Read the PR diff: gh pr diff <PR> --repo <REPO>
 - Evaluate each acceptance criterion: does the code satisfy it?
 - For each blocking issue, leave an individual comment on the PR
-- If the implementation fully satisfies the proposal and GHA passes, leave
-  zero comments
+- Non-blocking suggestions (style, naming, possible improvements) are welcome
+  as separate comments — prefix them with "nit:" or "suggestion:" so the
+  pipeline knows they are not blocking
 
 Review checklist:
 - Acceptance criteria: does every criterion have a corresponding implementation?
