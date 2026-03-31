@@ -56,7 +56,7 @@ Cadence is an autonomous software delivery pipeline that takes a task descriptio
 
 ### Agent Execution
 
-22. Agent steps (plan, dev, review, e2e, e2e_verify) spawn a Claude CLI subprocess with the role-specific system prompt, allowed tools, and model. The agent's prompt and response are recorded as a Run in the database.
+22. Agent steps (plan, dev, review, e2e, e2e_verify) are executed via pi agent core with the role-specific system prompt, allowed tools, and model. The agent's prompt and response are recorded as a Run in the database.
 
 23. Each agent invocation records: the full prompt sent, the full response received, the process exit code, and the wall-clock duration in seconds.
 
@@ -110,7 +110,7 @@ Cadence is an autonomous software delivery pipeline that takes a task descriptio
 
 ## Technical Considerations
 
-- **Agent runtime**: The product brief specifies [pi agent core](https://github.com/badlogic/pi-mono/tree/main/packages/agent) as the runtime for spawning and managing Claude CLI agents. The server should integrate this as a dependency for agent lifecycle management.
+- **Agent runtime**: The product brief specifies [pi agent core](https://github.com/badlogic/pi-mono/tree/main/packages/agent) as the runtime for spawning and managing agents. The server should integrate this as a dependency for agent lifecycle management.
 - **Database migrations**: New tables should be created via the existing migration system (node-pg-migrate). Migrations should be idempotent and ordered.
 - **GitHub API access**: The server needs a GitHub App or personal access token to create PRs, read CI status, and manage comments. The token/app credentials should be configurable via environment variables.
 - **SSE implementation**: Use Express response streaming for SSE. The server should maintain a registry of active SSE connections per workflow and fan-out events to all connected clients.
