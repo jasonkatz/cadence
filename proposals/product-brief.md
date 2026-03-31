@@ -226,6 +226,13 @@ Each criterion should be verifiable — something a reviewer can check by readin
 code, or an E2E agent can prove by calling an API, running a command, or
 interacting with a UI.
 
+## Technical Considerations
+Key design, architecture, and technical decisions relevant to this work.
+This may include: library or framework choices, non-functional requirements
+(performance, scalability, security constraints), system design decisions,
+data model considerations, and integration patterns. Only include what is
+relevant — not every proposal needs every category.
+
 ## Out of Scope
 What this proposal explicitly does NOT include.
 
@@ -417,7 +424,7 @@ The server is the brain. It owns all state, orchestrates all execution, and expo
 
 **Technology:** TypeScript, Express, Bun, PostgreSQL, Auth0.
 
-Agent execution happens by shelling out to the `claude` CLI. The server manages the subprocess lifecycle, captures stdout/stderr, and records the results as Runs.
+Agent execution uses [pi agent core](https://github.com/badlogic/pi-mono/tree/main/packages/agent) as the runtime for spawning and managing agents. The server manages the agent lifecycle and records the results as Runs.
 
 ### Web Client
 
