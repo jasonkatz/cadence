@@ -58,5 +58,12 @@ describe("planner-agent", () => {
       expect(prompt).toContain("Acceptance Criteria");
       expect(prompt).toContain("Technical Considerations");
     });
+
+    it("should instruct the agent to write the proposal to PROPOSAL.md", () => {
+      const wf = makeWorkflow();
+      const prompt = buildPlannerPrompt(wf);
+
+      expect(prompt).toContain("PROPOSAL.md");
+    });
   });
 });

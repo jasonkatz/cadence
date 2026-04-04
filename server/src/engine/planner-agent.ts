@@ -1,9 +1,11 @@
 import { Workflow } from "../dao/workflow-dao";
 import { logger } from "../utils/logger";
 import { spawn } from "child_process";
-import { mkdtemp, rm } from "fs/promises";
+import { mkdtemp, readFile, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+
+const PROPOSAL_FILENAME = "PROPOSAL.md";
 
 export interface PlannerResult {
   proposal: string | null;
@@ -34,14 +36,16 @@ export async function runPlannerAgent(
     // Run the agent using claude CLI
     const result = await execCommand(
       "claude",
-      ["-p", prompt, "--allowedTools", "Read,Glob,Grep,Bash(git log:git diff:git show:ls:find:wc)"],
+      ["-p", prompt, "--allowedTools", "Read,Write,Glob,Grep,Bash(git log:git diff:git show:ls:find:wc)"],
       {
         cwd: workDir,
         timeoutMs: PLANNER_TIMEOUT_MS,
       }
     );
 
-    const proposal = extractProposal(result.stdout);
+    // Read the proposal from the file the agent wrote
+    const proposalPath = join(workDir, PROPOSAL_FILENAME);
+    const proposal = await readProposalFile(proposalPath);
     const durationSecs = Math.round((Date.now() - startTime) / 1000);
 
     return {
@@ -92,15 +96,21 @@ export function buildPlannerPrompt(workflow: Workflow): string {
     ``,
     `## Technical Considerations`,
     `Architecture decisions, risks, dependencies, and implementation notes.`,
+    ``,
+    `Write the final proposal to a file called ${PROPOSAL_FILENAME} in the working directory. The file should contain ONLY the proposal content — no preamble, no explanation, just the proposal starting with ## Summary.`,
   );
 
   return parts.join("\n");
 }
 
-function extractProposal(output: string): string | null {
-  // The agent's output IS the proposal
-  if (!output || output.trim().length === 0) return null;
-  return output.trim();
+async function readProposalFile(path: string): Promise<string | null> {
+  try {
+    const content = await readFile(path, "utf-8");
+    const trimmed = content.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  } catch {
+    return null;
+  }
 }
 
 function execCommand(
