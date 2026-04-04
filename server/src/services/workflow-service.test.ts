@@ -1,17 +1,24 @@
 import { describe, it, expect, beforeEach, mock } from "bun:test";
-import type { Workflow } from "../dao/workflow-dao";
+import type { Workflow, WorkflowListParams } from "../dao/workflow-dao";
 import type { Step } from "../dao/step-dao";
 import type { Run } from "../dao/run-dao";
 
 // --- Workflow DAO mocks ---
-const mockWorkflowCreate = mock<(data: any) => Promise<Workflow>>(() =>
-  Promise.resolve(makeWorkflow())
-);
+const mockWorkflowCreate = mock<
+  (data: {
+    task: string;
+    repo: string;
+    branch: string;
+    requirements?: string;
+    maxIters?: number;
+    createdBy: string;
+  }) => Promise<Workflow>
+>(() => Promise.resolve(makeWorkflow()));
 const mockWorkflowFindByIdAndUser = mock<
   (id: string, userId: string) => Promise<Workflow | null>
 >(() => Promise.resolve(null));
 const mockWorkflowList = mock<
-  (params: any) => Promise<{ workflows: Workflow[]; total: number }>
+  (params: WorkflowListParams) => Promise<{ workflows: Workflow[]; total: number }>
 >(() => Promise.resolve({ workflows: [], total: 0 }));
 const mockWorkflowUpdateStatus = mock<
   (id: string, status: string) => Promise<Workflow | null>
@@ -29,7 +36,7 @@ mock.module("../dao/workflow-dao", () => ({
 
 // --- Step DAO mocks ---
 const mockStepFindByWorkflowId = mock<
-  (workflowId: string, filters?: any) => Promise<Step[]>
+  (workflowId: string, filters?: { iteration?: number }) => Promise<Step[]>
 >(() => Promise.resolve([]));
 const mockStepFindLatest = mock<(workflowId: string) => Promise<Step[]>>(() =>
   Promise.resolve([])
@@ -44,7 +51,7 @@ mock.module("../dao/step-dao", () => ({
 
 // --- Run DAO mock ---
 const mockRunFindByWorkflowId = mock<
-  (workflowId: string, filters?: any) => Promise<Run[]>
+  (workflowId: string, filters?: { agentRole?: string; iteration?: number }) => Promise<Run[]>
 >(() => Promise.resolve([]));
 
 mock.module("../dao/run-dao", () => ({
