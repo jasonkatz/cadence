@@ -1,4 +1,4 @@
-import { query } from "../db";
+import { query, type QueryFn } from "../db";
 
 export interface Workflow {
   id: string;
@@ -24,7 +24,8 @@ export interface WorkflowListParams {
   offset?: number;
 }
 
-export const workflowDao = {
+export function createWorkflowDao(q: QueryFn) {
+  return {
   async create(data: {
     task: string;
     repo: string;
@@ -33,7 +34,7 @@ export const workflowDao = {
     maxIters?: number;
     createdBy: string;
   }): Promise<Workflow> {
-    const result = await query<Workflow>(
+    const result = await q<Workflow>(
       `INSERT INTO workflows (task, repo, branch, requirements, max_iters, created_by)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
@@ -42,7 +43,7 @@ export const workflowDao = {
         data.repo,
         data.branch,
         data.requirements || null,
-        data.maxIters || 8,
+        data.maxIters ?? 8,
         data.createdBy,
       ]
     );
@@ -50,7 +51,7 @@ export const workflowDao = {
   },
 
   async findById(id: string): Promise<Workflow | null> {
-    const result = await query<Workflow>(
+    const result = await q<Workflow>(
       "SELECT * FROM workflows WHERE id = $1",
       [id]
     );
@@ -61,7 +62,7 @@ export const workflowDao = {
     id: string,
     userId: string
   ): Promise<Workflow | null> {
-    const result = await query<Workflow>(
+    const result = await q<Workflow>(
       "SELECT * FROM workflows WHERE id = $1 AND created_by = $2",
       [id, userId]
     );
@@ -80,7 +81,7 @@ export const workflowDao = {
 
     const where = conditions.join(" AND ");
 
-    const countResult = await query<{ count: string }>(
+    const countResult = await q<{ count: string }>(
       `SELECT COUNT(*) FROM workflows WHERE ${where}`,
       values
     );
@@ -89,7 +90,7 @@ export const workflowDao = {
     const limit = params.limit || 50;
     const offset = params.offset || 0;
 
-    const result = await query<Workflow>(
+    const result = await q<Workflow>(
       `SELECT * FROM workflows WHERE ${where} ORDER BY created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
       [...values, limit, offset]
     );
@@ -101,10 +102,53 @@ export const workflowDao = {
     id: string,
     status: string
   ): Promise<Workflow | null> {
-    const result = await query<Workflow>(
+    const result = await q<Workflow>(
       `UPDATE workflows SET status = $1, updated_at = now() WHERE id = $2 RETURNING *`,
       [status, id]
     );
     return result.rows[0] || null;
   },
-};
+
+  async findPending(): Promise<Workflow | null> {
+    const result = await q<Workflow>(
+      `SELECT * FROM workflows WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1`
+    );
+    return result.rows[0] || null;
+  },
+
+  async updateProposal(
+    id: string,
+    proposal: string
+  ): Promise<Workflow | null> {
+    const result = await q<Workflow>(
+      `UPDATE workflows SET proposal = $1, updated_at = now() WHERE id = $2 RETURNING *`,
+      [proposal, id]
+    );
+    return result.rows[0] || null;
+  },
+
+  async updateError(
+    id: string,
+    error: string
+  ): Promise<Workflow | null> {
+    const result = await q<Workflow>(
+      `UPDATE workflows SET status = 'failed', error = $1, updated_at = now() WHERE id = $2 RETURNING *`,
+      [error, id]
+    );
+    return result.rows[0] || null;
+  },
+
+  async updateIteration(
+    id: string,
+    iteration: number
+  ): Promise<Workflow | null> {
+    const result = await q<Workflow>(
+      `UPDATE workflows SET iteration = $1, updated_at = now() WHERE id = $2 RETURNING *`,
+      [iteration, id]
+    );
+    return result.rows[0] || null;
+  },
+  };
+}
+
+export const workflowDao = createWorkflowDao(query);

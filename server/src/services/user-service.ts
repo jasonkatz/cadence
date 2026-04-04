@@ -1,27 +1,37 @@
-import { userDao, User } from "../dao/user-dao";
+import { userDao as defaultUserDao, User } from "../dao/user-dao";
 
-export const userService = {
-  async findOrCreate(data: {
-    auth0Id: string;
-    email: string;
-    name?: string;
-  }): Promise<{ id: string; email: string; name?: string }> {
-    let user = await userDao.findByAuth0Id(data.auth0Id);
+export interface UserServiceDeps {
+  userDao: Pick<typeof defaultUserDao, "findByAuth0Id" | "findById" | "create" | "update">;
+}
 
-    if (!user) {
-      user = await userDao.create(data);
-    } else if (data.name && user.name !== data.name) {
-      user = (await userDao.update(user.id, { name: data.name })) || user;
-    }
+const defaultDeps: UserServiceDeps = { userDao: defaultUserDao };
 
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name || undefined,
-    };
-  },
+export function createUserService(deps: UserServiceDeps = defaultDeps) {
+  return {
+    async findOrCreate(data: {
+      auth0Id: string;
+      email: string;
+      name?: string;
+    }): Promise<{ id: string; email: string; name?: string }> {
+      let user = await deps.userDao.findByAuth0Id(data.auth0Id);
 
-  async findById(id: string): Promise<User | null> {
-    return userDao.findById(id);
-  },
-};
+      if (!user) {
+        user = await deps.userDao.create(data);
+      } else if (data.name && user.name !== data.name) {
+        user = (await deps.userDao.update(user.id, { name: data.name })) || user;
+      }
+
+      return {
+        id: user.id,
+        email: user.email,
+        name: user.name || undefined,
+      };
+    },
+
+    async findById(id: string): Promise<User | null> {
+      return deps.userDao.findById(id);
+    },
+  };
+}
+
+export const userService = createUserService();

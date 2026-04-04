@@ -6,7 +6,7 @@ mod commands;
 mod config;
 mod output;
 
-use commands::{cancel, config as config_cmd, list, login, logout, run, status, whoami};
+use commands::{cancel, config as config_cmd, list, login, logout, proposal, run, status, whoami};
 
 #[derive(Parser)]
 #[command(name = "cadence")]
@@ -69,6 +69,11 @@ enum Commands {
     },
     /// Cancel a workflow
     Cancel {
+        /// Workflow ID
+        workflow_id: String,
+    },
+    /// Show the proposal for a workflow
+    Proposal {
         /// Workflow ID
         workflow_id: String,
     },
@@ -135,6 +140,7 @@ async fn main() {
         Commands::List { status } => list::run(&ctx, status.as_deref()).await,
         Commands::Status { workflow_id } => status::run(&ctx, &workflow_id).await,
         Commands::Cancel { workflow_id } => cancel::run(&ctx, &workflow_id).await,
+        Commands::Proposal { workflow_id } => proposal::run(&ctx, &workflow_id).await,
     };
 
     if let Err(err) = result {

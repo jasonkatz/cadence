@@ -262,6 +262,33 @@ paths:
         "404":
           description: Workflow not found
 
+  /v1/workflows/{id}/events:
+    get:
+      summary: Stream workflow events via SSE
+      operationId: streamWorkflowEvents
+      tags:
+        - Workflows
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: SSE event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          description: Unauthorized
+        "404":
+          description: Workflow not found
+
   /v1/workflows/{id}/cancel:
     post:
       summary: Cancel a workflow

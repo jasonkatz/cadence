@@ -1,77 +1,6 @@
 import { describe, it, expect, beforeEach, mock } from "bun:test";
-import type { Workflow, WorkflowListParams } from "../dao/workflow-dao";
-import type { Step } from "../dao/step-dao";
-import type { Run } from "../dao/run-dao";
-
-// --- Workflow DAO mocks ---
-const mockWorkflowCreate = mock<
-  (data: {
-    task: string;
-    repo: string;
-    branch: string;
-    requirements?: string;
-    maxIters?: number;
-    createdBy: string;
-  }) => Promise<Workflow>
->(() => Promise.resolve(makeWorkflow()));
-const mockWorkflowFindByIdAndUser = mock<
-  (id: string, userId: string) => Promise<Workflow | null>
->(() => Promise.resolve(null));
-const mockWorkflowList = mock<
-  (params: WorkflowListParams) => Promise<{ workflows: Workflow[]; total: number }>
->(() => Promise.resolve({ workflows: [], total: 0 }));
-const mockWorkflowUpdateStatus = mock<
-  (id: string, status: string) => Promise<Workflow | null>
->(() => Promise.resolve(null));
-
-mock.module("../dao/workflow-dao", () => ({
-  workflowDao: {
-    create: mockWorkflowCreate,
-    findById: mock(() => Promise.resolve(null)),
-    findByIdAndUser: mockWorkflowFindByIdAndUser,
-    list: mockWorkflowList,
-    updateStatus: mockWorkflowUpdateStatus,
-  },
-}));
-
-// --- Step DAO mocks ---
-const mockStepFindByWorkflowId = mock<
-  (workflowId: string, filters?: { iteration?: number }) => Promise<Step[]>
->(() => Promise.resolve([]));
-const mockStepFindLatest = mock<(workflowId: string) => Promise<Step[]>>(() =>
-  Promise.resolve([])
-);
-
-mock.module("../dao/step-dao", () => ({
-  stepDao: {
-    findByWorkflowId: mockStepFindByWorkflowId,
-    findLatestIterationByWorkflowId: mockStepFindLatest,
-  },
-}));
-
-// --- Run DAO mock ---
-const mockRunFindByWorkflowId = mock<
-  (workflowId: string, filters?: { agentRole?: string; iteration?: number }) => Promise<Run[]>
->(() => Promise.resolve([]));
-
-mock.module("../dao/run-dao", () => ({
-  runDao: {
-    findByWorkflowId: mockRunFindByWorkflowId,
-  },
-}));
-
-// --- Settings service mock ---
-const mockHasGithubToken = mock<(userId: string) => Promise<boolean>>(() =>
-  Promise.resolve(true)
-);
-
-mock.module("./settings-service", () => ({
-  settingsService: {
-    hasGithubToken: mockHasGithubToken,
-  },
-}));
-
-const { workflowService } = await import("./workflow-service");
+import type { Workflow } from "../dao/workflow-dao";
+import { createWorkflowService, WorkflowServiceDeps } from "./workflow-service";
 
 function makeWorkflow(overrides?: Partial<Workflow>): Workflow {
   return {
@@ -93,51 +22,105 @@ function makeWorkflow(overrides?: Partial<Workflow>): Workflow {
   };
 }
 
+function makeDeps() {
+  const mockWorkflowCreate = mock((_data: unknown) => Promise.resolve(makeWorkflow()));
+  const mockFindByIdAndUser = mock((_id: string, _userId: string) =>
+    Promise.resolve(null as Workflow | null)
+  );
+  const mockList = mock((_params: unknown) =>
+    Promise.resolve({ workflows: [] as Workflow[], total: 0 })
+  );
+  const mockUpdateStatus = mock((_id: string, _status: string) =>
+    Promise.resolve(null as Workflow | null)
+  );
+
+  const mockStepFindByWorkflowId = mock((_wfId: string, _filters?: unknown) =>
+    Promise.resolve([])
+  );
+  const mockStepFindLatest = mock((_wfId: string) => Promise.resolve([]));
+
+  const mockRunFindByWorkflowId = mock((_wfId: string, _filters?: unknown) =>
+    Promise.resolve([])
+  );
+
+  const mockHasGithubToken = mock((_userId: string) => Promise.resolve(true));
+
+  const deps: WorkflowServiceDeps = {
+    workflowDao: {
+      create: mockWorkflowCreate,
+      findByIdAndUser: mockFindByIdAndUser,
+      list: mockList,
+      updateStatus: mockUpdateStatus,
+    } as WorkflowServiceDeps["workflowDao"],
+    stepDao: {
+      findByWorkflowId: mockStepFindByWorkflowId,
+      findLatestIterationByWorkflowId: mockStepFindLatest,
+    } as WorkflowServiceDeps["stepDao"],
+    runDao: {
+      findByWorkflowId: mockRunFindByWorkflowId,
+    } as WorkflowServiceDeps["runDao"],
+    settingsService: {
+      hasGithubToken: mockHasGithubToken,
+    },
+  };
+
+  return {
+    deps,
+    mocks: {
+      workflowCreate: mockWorkflowCreate,
+      findByIdAndUser: mockFindByIdAndUser,
+      list: mockList,
+      updateStatus: mockUpdateStatus,
+      stepFindByWorkflowId: mockStepFindByWorkflowId,
+      stepFindLatest: mockStepFindLatest,
+      runFindByWorkflowId: mockRunFindByWorkflowId,
+      hasGithubToken: mockHasGithubToken,
+    },
+  };
+}
+
 describe("workflowService", () => {
+  let service: ReturnType<typeof createWorkflowService>;
+  let mocks: ReturnType<typeof makeDeps>["mocks"];
+
   beforeEach(() => {
-    mockWorkflowCreate.mockReset();
-    mockWorkflowFindByIdAndUser.mockReset();
-    mockWorkflowList.mockReset();
-    mockWorkflowUpdateStatus.mockReset();
-    mockStepFindByWorkflowId.mockReset();
-    mockStepFindLatest.mockReset();
-    mockRunFindByWorkflowId.mockReset();
-    mockHasGithubToken.mockReset();
-    mockHasGithubToken.mockResolvedValue(true);
+    const d = makeDeps();
+    service = createWorkflowService(d.deps);
+    mocks = d.mocks;
   });
 
   describe("create", () => {
     it("should create a workflow with defaults", async () => {
       const wf = makeWorkflow();
-      mockWorkflowCreate.mockResolvedValue(wf);
+      mocks.workflowCreate.mockResolvedValue(wf);
 
-      const result = await workflowService.create("user-1", {
+      const result = await service.create("user-1", {
         task: "add login page",
         repo: "acme/webapp",
       });
 
       expect(result.id).toBe("wf-1");
       expect(result.status).toBe("pending");
-      expect(mockWorkflowCreate).toHaveBeenCalledTimes(1);
+      expect(mocks.workflowCreate).toHaveBeenCalledTimes(1);
     });
 
     it("should throw ValidationError when task is missing", async () => {
       await expect(
-        workflowService.create("user-1", { task: "", repo: "acme/webapp" })
+        service.create("user-1", { task: "", repo: "acme/webapp" })
       ).rejects.toThrow("task is required");
     });
 
     it("should throw ValidationError when repo is missing", async () => {
       await expect(
-        workflowService.create("user-1", { task: "do something", repo: "" })
+        service.create("user-1", { task: "do something", repo: "" })
       ).rejects.toThrow("repo is required");
     });
 
     it("should throw ValidationError when no GitHub token configured", async () => {
-      mockHasGithubToken.mockResolvedValue(false);
+      mocks.hasGithubToken.mockResolvedValue(false);
 
       await expect(
-        workflowService.create("user-1", {
+        service.create("user-1", {
           task: "add login",
           repo: "acme/webapp",
         })
@@ -146,27 +129,27 @@ describe("workflowService", () => {
 
     it("should use provided branch when given", async () => {
       const wf = makeWorkflow({ branch: "my-branch" });
-      mockWorkflowCreate.mockResolvedValue(wf);
+      mocks.workflowCreate.mockResolvedValue(wf);
 
-      await workflowService.create("user-1", {
+      await service.create("user-1", {
         task: "add login",
         repo: "acme/webapp",
         branch: "my-branch",
       });
 
-      const createArg = mockWorkflowCreate.mock.calls[0][0];
+      const createArg = mocks.workflowCreate.mock.calls[0][0] as Record<string, unknown>;
       expect(createArg.branch).toBe("my-branch");
     });
 
     it("should auto-generate branch when not provided", async () => {
-      mockWorkflowCreate.mockResolvedValue(makeWorkflow());
+      mocks.workflowCreate.mockResolvedValue(makeWorkflow());
 
-      await workflowService.create("user-1", {
+      await service.create("user-1", {
         task: "add login",
         repo: "acme/webapp",
       });
 
-      const createArg = mockWorkflowCreate.mock.calls[0][0];
+      const createArg = mocks.workflowCreate.mock.calls[0][0] as Record<string, unknown>;
       expect(createArg.branch).toMatch(/^cadence\//);
     });
   });
@@ -174,9 +157,9 @@ describe("workflowService", () => {
   describe("list", () => {
     it("should return workflows for user", async () => {
       const wf = makeWorkflow();
-      mockWorkflowList.mockResolvedValue({ workflows: [wf], total: 1 });
+      mocks.list.mockResolvedValue({ workflows: [wf], total: 1 });
 
-      const result = await workflowService.list("user-1", {});
+      const result = await service.list("user-1", {});
 
       expect(result.total).toBe(1);
       expect(result.workflows).toHaveLength(1);
@@ -184,11 +167,11 @@ describe("workflowService", () => {
     });
 
     it("should pass status filter to DAO", async () => {
-      mockWorkflowList.mockResolvedValue({ workflows: [], total: 0 });
+      mocks.list.mockResolvedValue({ workflows: [], total: 0 });
 
-      await workflowService.list("user-1", { status: "pending" });
+      await service.list("user-1", { status: "pending" });
 
-      const listArg = mockWorkflowList.mock.calls[0][0];
+      const listArg = mocks.list.mock.calls[0][0] as Record<string, unknown>;
       expect(listArg.status).toBe("pending");
     });
   });
@@ -196,56 +179,56 @@ describe("workflowService", () => {
   describe("getById", () => {
     it("should return workflow with steps", async () => {
       const wf = makeWorkflow();
-      mockWorkflowFindByIdAndUser.mockResolvedValue(wf);
-      mockStepFindLatest.mockResolvedValue([]);
+      mocks.findByIdAndUser.mockResolvedValue(wf);
+      mocks.stepFindLatest.mockResolvedValue([]);
 
-      const result = await workflowService.getById("wf-1", "user-1");
+      const result = await service.getById("wf-1", "user-1");
 
       expect(result.id).toBe("wf-1");
       expect(result.steps).toEqual([]);
     });
 
     it("should throw NotFoundError for missing workflow", async () => {
-      mockWorkflowFindByIdAndUser.mockResolvedValue(null);
+      mocks.findByIdAndUser.mockResolvedValue(null);
 
       await expect(
-        workflowService.getById("nonexistent", "user-1")
+        service.getById("nonexistent", "user-1")
       ).rejects.toThrow("Workflow not found");
     });
   });
 
   describe("getSteps", () => {
     it("should throw NotFoundError for missing workflow", async () => {
-      mockWorkflowFindByIdAndUser.mockResolvedValue(null);
+      mocks.findByIdAndUser.mockResolvedValue(null);
 
       await expect(
-        workflowService.getSteps("nonexistent", "user-1")
+        service.getSteps("nonexistent", "user-1")
       ).rejects.toThrow("Workflow not found");
     });
 
     it("should return steps for valid workflow", async () => {
-      mockWorkflowFindByIdAndUser.mockResolvedValue(makeWorkflow());
-      mockStepFindByWorkflowId.mockResolvedValue([]);
+      mocks.findByIdAndUser.mockResolvedValue(makeWorkflow());
+      mocks.stepFindByWorkflowId.mockResolvedValue([]);
 
-      const result = await workflowService.getSteps("wf-1", "user-1");
+      const result = await service.getSteps("wf-1", "user-1");
       expect(result).toEqual([]);
     });
   });
 
   describe("getRuns", () => {
     it("should throw NotFoundError for missing workflow", async () => {
-      mockWorkflowFindByIdAndUser.mockResolvedValue(null);
+      mocks.findByIdAndUser.mockResolvedValue(null);
 
       await expect(
-        workflowService.getRuns("nonexistent", "user-1")
+        service.getRuns("nonexistent", "user-1")
       ).rejects.toThrow("Workflow not found");
     });
 
     it("should return runs for valid workflow", async () => {
-      mockWorkflowFindByIdAndUser.mockResolvedValue(makeWorkflow());
-      mockRunFindByWorkflowId.mockResolvedValue([]);
+      mocks.findByIdAndUser.mockResolvedValue(makeWorkflow());
+      mocks.runFindByWorkflowId.mockResolvedValue([]);
 
-      const result = await workflowService.getRuns("wf-1", "user-1");
+      const result = await service.getRuns("wf-1", "user-1");
       expect(result).toEqual([]);
     });
   });
@@ -253,61 +236,61 @@ describe("workflowService", () => {
   describe("cancel", () => {
     it("should cancel a pending workflow", async () => {
       const wf = makeWorkflow({ status: "pending" });
-      mockWorkflowFindByIdAndUser.mockResolvedValue(wf);
-      mockWorkflowUpdateStatus.mockResolvedValue(
+      mocks.findByIdAndUser.mockResolvedValue(wf);
+      mocks.updateStatus.mockResolvedValue(
         makeWorkflow({ status: "cancelled" })
       );
 
-      const result = await workflowService.cancel("wf-1", "user-1");
+      const result = await service.cancel("wf-1", "user-1");
       expect(result.status).toBe("cancelled");
     });
 
     it("should throw NotFoundError for missing workflow", async () => {
-      mockWorkflowFindByIdAndUser.mockResolvedValue(null);
+      mocks.findByIdAndUser.mockResolvedValue(null);
 
       await expect(
-        workflowService.cancel("nonexistent", "user-1")
+        service.cancel("nonexistent", "user-1")
       ).rejects.toThrow("Workflow not found");
     });
 
     it("should throw ConflictError for completed workflow", async () => {
-      mockWorkflowFindByIdAndUser.mockResolvedValue(
+      mocks.findByIdAndUser.mockResolvedValue(
         makeWorkflow({ status: "complete" })
       );
 
       await expect(
-        workflowService.cancel("wf-1", "user-1")
+        service.cancel("wf-1", "user-1")
       ).rejects.toThrow("Cannot cancel workflow with status 'complete'");
     });
 
     it("should throw ConflictError for failed workflow", async () => {
-      mockWorkflowFindByIdAndUser.mockResolvedValue(
+      mocks.findByIdAndUser.mockResolvedValue(
         makeWorkflow({ status: "failed" })
       );
 
       await expect(
-        workflowService.cancel("wf-1", "user-1")
+        service.cancel("wf-1", "user-1")
       ).rejects.toThrow("Cannot cancel workflow with status 'failed'");
     });
 
     it("should throw ConflictError for already cancelled workflow", async () => {
-      mockWorkflowFindByIdAndUser.mockResolvedValue(
+      mocks.findByIdAndUser.mockResolvedValue(
         makeWorkflow({ status: "cancelled" })
       );
 
       await expect(
-        workflowService.cancel("wf-1", "user-1")
+        service.cancel("wf-1", "user-1")
       ).rejects.toThrow("Cannot cancel workflow with status 'cancelled'");
     });
 
     it("should allow cancelling a running workflow", async () => {
       const wf = makeWorkflow({ status: "running" });
-      mockWorkflowFindByIdAndUser.mockResolvedValue(wf);
-      mockWorkflowUpdateStatus.mockResolvedValue(
+      mocks.findByIdAndUser.mockResolvedValue(wf);
+      mocks.updateStatus.mockResolvedValue(
         makeWorkflow({ status: "cancelled" })
       );
 
-      const result = await workflowService.cancel("wf-1", "user-1");
+      const result = await service.cancel("wf-1", "user-1");
       expect(result.status).toBe("cancelled");
     });
   });

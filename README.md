@@ -1,108 +1,35 @@
 # Cadence
 
-## Getting Started
+Autonomous software delivery pipeline. Describe a task, point it at a repo, and Cadence orchestrates AI agents to plan, implement, test, review, and ship a pull request — without manual intervention at each step.
 
-Clone this template and rename it for your project:
+## How it works
 
-```bash
-git clone <repo-url> my-project
-cd my-project
-node scripts/rename.js "My Project"
-```
+1. A **planner agent** reads the codebase and generates a structured proposal (summary, acceptance criteria, technical considerations)
+2. A **dev agent** implements the proposal using TDD, commits, and opens a PR
+3. The system polls **CI**, then a **reviewer agent** evaluates the diff against the proposal
+4. An **E2E agent** runs real user journeys; a **verifier agent** checks the evidence against acceptance criteria
+5. If any step fails, the workflow **regresses** — the dev agent gets failure context and tries again (up to a configurable iteration limit)
+6. When all steps pass, the PR is ready for human review
 
-The rename script will update all references throughout the codebase and reinitialize git with a fresh history.
+Every agent invocation is recorded (prompt, response, exit code, duration) for full observability.
 
----
-
-A production-ready full-stack web application with:
-
-- **Client**: React + TypeScript + Vite + Tailwind CSS
-- **Server**: Bun + TypeScript + Express + OpenAPI
-- **Database**: PostgreSQL with migrations
-- **CLI**: Rust + Cargo
-- **Auth**: Auth0
-
-## Prerequisites
-
-- Bun
-- Node.js 20+ and Yarn (for client)
-- Rust (for CLI)
-- Docker (for local database)
-
-## Quick Start
-
-```bash
-# Start the database
-docker-compose up -d
-
-# Server setup
-cd server
-cp .env.example .env
-bun install
-bun run migrate:up
-bun dev
-
-# Client setup (new terminal)
-cd client
-cp .env.example .env
-yarn install
-yarn dev
-
-# CLI setup (new terminal)
-cd cli
-cargo build
-./target/debug/cadence -l login
-```
-
-## Project Structure
+## Architecture
 
 ```
-.
-├── client/          # React frontend
-├── server/          # Express backend
-├── cli/             # Rust CLI
-├── .github/         # CI workflows
-└── docker-compose.yaml
+client/     React + TypeScript + Vite + Tailwind
+server/     Bun + TypeScript + Express + PostgreSQL
+cli/        Rust + Clap + Tokio
 ```
 
-## Available Scripts
+The server owns all state and orchestration. The CLI and web client are thin display layers that communicate via REST API and SSE for real-time progress.
 
-### Client
+## Project status
 
-| Script | Description |
-|--------|-------------|
-| `yarn dev` | Start dev server |
-| `yarn build` | Build for production |
-| `yarn preview` | Preview production build |
-| `yarn lint` | Run ESLint |
-| `yarn test` | Run tests |
+See `proposals/` for the full six-phase roadmap.
 
-### Server
-
-| Script | Description |
-|--------|-------------|
-| `bun dev` | Start dev server |
-| `bun run build` | Build for production |
-| `bun start` | Run production server |
-| `bun run lint` | Run ESLint |
-| `bun test` | Run tests |
-| `bun run migrate:up` | Run migrations |
-| `bun run migrate:down` | Rollback migration |
-| `bun run migrate:create` | Create new migration |
-
-### CLI
-
-```bash
-cargo build           # Build
-cargo run -- login    # Run login command
-cargo run -- whoami   # Show current user
-cargo run -- logout   # Clear credentials
-```
-
-## Configuration
-
-### Auth0 Setup
-
-1. Create an Auth0 application (Single Page Application for client, Machine to Machine for CLI)
-2. Configure the callback URLs and allowed origins
-3. Update the environment variables in `.env` files
+- [x] **Phase 1** — Data foundation, workflow CRUD, CLI, web dashboard
+- [x] **Phase 2** — Workflow engine, planner agent, SSE streaming
+- [ ] **Phase 3** — Dev agent, GitHub PR integration
+- [ ] **Phase 4** — CI polling, review agent, regression loop
+- [ ] **Phase 5** — E2E verification, signoff
+- [ ] **Phase 6** — Run logs CLI, web client completion

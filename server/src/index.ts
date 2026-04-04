@@ -12,6 +12,8 @@ import docsRoutes from "./routes/docs";
 import authRoutes from "./routes/auth";
 import settingsRoutes from "./routes/settings";
 import workflowRoutes from "./routes/workflows";
+import eventsRoutes from "./routes/events";
+import { startEngine, stopEngine } from "./engine/workflow-engine";
 
 const app = express();
 
@@ -31,6 +33,7 @@ authenticatedRouter.use(rateLimiter);
 authenticatedRouter.use(authRoutes);
 authenticatedRouter.use(settingsRoutes);
 authenticatedRouter.use(workflowRoutes);
+authenticatedRouter.use(eventsRoutes);
 
 app.use("/v1", authenticatedRouter);
 
@@ -43,8 +46,22 @@ app.use(errorHandler);
 
 const port = parseInt(config.PORT, 10);
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   logger.info(`Server running on port ${port}`);
+  startEngine();
 });
+
+// Graceful shutdown
+function shutdown(signal: string) {
+  logger.info(`Received ${signal}, shutting down gracefully`);
+  stopEngine();
+  server.close(() => {
+    logger.info("Server closed");
+    process.exit(0);
+  });
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
 
 export default app;

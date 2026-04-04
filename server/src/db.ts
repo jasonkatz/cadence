@@ -18,6 +18,8 @@ export async function getClient() {
   return pool.connect();
 }
 
+export type QueryFn = typeof query;
+
 export async function withTransaction<T>(
   fn: (client: pg.PoolClient) => Promise<T>
 ): Promise<T> {
@@ -34,3 +36,4 @@ export async function withTransaction<T>(
     client.release();
   }
 }
+// test

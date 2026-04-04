@@ -29,12 +29,49 @@ pub async fn run(
 
     if ctx.json {
         print_json(&workflow)?;
-    } else {
-        print_success(&format!(
-            "Workflow created: {} (status: {})",
-            workflow.id, workflow.status
-        ));
+        return Ok(());
     }
+
+    print_success(&format!(
+        "Workflow created: {} (status: {})",
+        workflow.id, workflow.status
+    ));
+
+    // Stream SSE events until terminal state
+    println!("Streaming progress...\n");
+
+    let stream_path = format!("/v1/workflows/{}/events", workflow.id);
+    client
+        .stream_sse(&stream_path, |event_type, data| {
+            match event_type {
+                "step:updated" => {
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
+                        let step_type = parsed["type"].as_str().unwrap_or("unknown");
+                        let status = parsed["status"].as_str().unwrap_or("unknown");
+                        println!("  {}: {}", step_type, status);
+                    }
+                }
+                "workflow:updated" => {
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
+                        let status = parsed["status"].as_str().unwrap_or("unknown");
+                        println!("  workflow: {}", status);
+                    }
+                }
+                "workflow:completed" => {
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
+                        let status = parsed["status"].as_str().unwrap_or("unknown");
+                        println!("\nWorkflow {}", status);
+                        if let Some(error) = parsed["error"].as_str() {
+                            println!("Error: {}", error);
+                        }
+                    }
+                    return false; // stop streaming
+                }
+                _ => {}
+            }
+            true // continue streaming
+        })
+        .await?;
 
     Ok(())
 }

@@ -1,7 +1,7 @@
-import { workflowDao, Workflow } from "../dao/workflow-dao";
-import { stepDao, Step } from "../dao/step-dao";
-import { runDao, Run } from "../dao/run-dao";
-import { settingsService } from "./settings-service";
+import { workflowDao as defaultWorkflowDao, Workflow } from "../dao/workflow-dao";
+import { stepDao as defaultStepDao, Step } from "../dao/step-dao";
+import { runDao as defaultRunDao, Run } from "../dao/run-dao";
+import { settingsService as defaultSettingsService } from "./settings-service";
 import {
   ValidationError,
   NotFoundError,
@@ -32,123 +32,141 @@ export interface WorkflowDetail extends Workflow {
   steps: Step[];
 }
 
+export interface WorkflowServiceDeps {
+  workflowDao: Pick<typeof defaultWorkflowDao, "create" | "findByIdAndUser" | "list" | "updateStatus">;
+  stepDao: Pick<typeof defaultStepDao, "findByWorkflowId" | "findLatestIterationByWorkflowId">;
+  runDao: Pick<typeof defaultRunDao, "findByWorkflowId">;
+  settingsService: Pick<typeof defaultSettingsService, "hasGithubToken">;
+}
+
+const defaultDeps: WorkflowServiceDeps = {
+  workflowDao: defaultWorkflowDao,
+  stepDao: defaultStepDao,
+  runDao: defaultRunDao,
+  settingsService: defaultSettingsService,
+};
+
 const TERMINAL_STATUSES = ["complete", "failed", "cancelled"];
 
-export const workflowService = {
-  async create(
-    userId: string,
-    input: WorkflowCreateInput
-  ): Promise<Workflow> {
-    if (!input.task) {
-      throw new ValidationError("task is required");
-    }
-    if (!input.repo) {
-      throw new ValidationError("repo is required");
-    }
+export function createWorkflowService(deps: WorkflowServiceDeps = defaultDeps) {
+  return {
+    async create(
+      userId: string,
+      input: WorkflowCreateInput
+    ): Promise<Workflow> {
+      if (!input.task) {
+        throw new ValidationError("task is required");
+      }
+      if (!input.repo) {
+        throw new ValidationError("repo is required");
+      }
 
-    const hasToken = await settingsService.hasGithubToken(userId);
-    if (!hasToken) {
-      throw new ValidationError(
-        "GitHub token not configured. Use PUT /v1/settings to set your token."
-      );
-    }
+      const hasToken = await deps.settingsService.hasGithubToken(userId);
+      if (!hasToken) {
+        throw new ValidationError(
+          "GitHub token not configured. Use PUT /v1/settings to set your token."
+        );
+      }
 
-    const tempId = crypto.randomUUID().split("-")[0];
-    const branch = input.branch || `cadence/${tempId}`;
+      const tempId = crypto.randomUUID().split("-")[0];
+      const branch = input.branch || `cadence/${tempId}`;
 
-    return workflowDao.create({
-      task: input.task,
-      repo: input.repo,
-      branch,
-      requirements: input.requirements,
-      maxIters: input.max_iters,
-      createdBy: userId,
-    });
-  },
+      return deps.workflowDao.create({
+        task: input.task,
+        repo: input.repo,
+        branch,
+        requirements: input.requirements,
+        maxIters: input.max_iters,
+        createdBy: userId,
+      });
+    },
 
-  async list(
-    userId: string,
-    params: { status?: string; limit?: number; offset?: number }
-  ): Promise<{ workflows: WorkflowListItem[]; total: number }> {
-    const { workflows, total } = await workflowDao.list({
-      userId,
-      status: params.status,
-      limit: params.limit,
-      offset: params.offset,
-    });
+    async list(
+      userId: string,
+      params: { status?: string; limit?: number; offset?: number }
+    ): Promise<{ workflows: WorkflowListItem[]; total: number }> {
+      const { workflows, total } = await deps.workflowDao.list({
+        userId,
+        status: params.status,
+        limit: params.limit,
+        offset: params.offset,
+      });
 
-    return {
-      workflows: workflows.map((w) => ({
-        id: w.id,
-        task: w.task,
-        repo: w.repo,
-        branch: w.branch,
-        status: w.status,
-        iteration: w.iteration,
-        pr_number: w.pr_number,
-        created_at: w.created_at,
-        updated_at: w.updated_at,
-      })),
-      total,
-    };
-  },
+      return {
+        workflows: workflows.map((w) => ({
+          id: w.id,
+          task: w.task,
+          repo: w.repo,
+          branch: w.branch,
+          status: w.status,
+          iteration: w.iteration,
+          pr_number: w.pr_number,
+          created_at: w.created_at,
+          updated_at: w.updated_at,
+        })),
+        total,
+      };
+    },
 
-  async getById(
-    workflowId: string,
-    userId: string
-  ): Promise<WorkflowDetail> {
-    const workflow = await workflowDao.findByIdAndUser(workflowId, userId);
-    if (!workflow) {
-      throw new NotFoundError("Workflow not found");
-    }
+    async getById(
+      workflowId: string,
+      userId: string
+    ): Promise<WorkflowDetail> {
+      const workflow = await deps.workflowDao.findByIdAndUser(workflowId, userId);
+      if (!workflow) {
+        throw new NotFoundError("Workflow not found");
+      }
 
-    const steps = await stepDao.findLatestIterationByWorkflowId(workflowId);
+      const steps = await deps.stepDao.findLatestIterationByWorkflowId(workflowId);
 
-    return { ...workflow, steps };
-  },
+      return { ...workflow, steps };
+    },
 
-  async getSteps(
-    workflowId: string,
-    userId: string,
-    filters?: { iteration?: number }
-  ): Promise<Step[]> {
-    const workflow = await workflowDao.findByIdAndUser(workflowId, userId);
-    if (!workflow) {
-      throw new NotFoundError("Workflow not found");
-    }
+    async getSteps(
+      workflowId: string,
+      userId: string,
+      filters?: { iteration?: number }
+    ): Promise<Step[]> {
+      const workflow = await deps.workflowDao.findByIdAndUser(workflowId, userId);
+      if (!workflow) {
+        throw new NotFoundError("Workflow not found");
+      }
 
-    return stepDao.findByWorkflowId(workflowId, filters);
-  },
+      return deps.stepDao.findByWorkflowId(workflowId, filters);
+    },
 
-  async getRuns(
-    workflowId: string,
-    userId: string,
-    filters?: { agentRole?: string; iteration?: number }
-  ): Promise<Run[]> {
-    const workflow = await workflowDao.findByIdAndUser(workflowId, userId);
-    if (!workflow) {
-      throw new NotFoundError("Workflow not found");
-    }
+    async getRuns(
+      workflowId: string,
+      userId: string,
+      filters?: { agentRole?: string; iteration?: number }
+    ): Promise<Run[]> {
+      const workflow = await deps.workflowDao.findByIdAndUser(workflowId, userId);
+      if (!workflow) {
+        throw new NotFoundError("Workflow not found");
+      }
 
-    return runDao.findByWorkflowId(workflowId, filters);
-  },
+      return deps.runDao.findByWorkflowId(workflowId, filters);
+    },
 
-  async cancel(
-    workflowId: string,
-    userId: string
-  ): Promise<Workflow> {
-    const workflow = await workflowDao.findByIdAndUser(workflowId, userId);
-    if (!workflow) {
-      throw new NotFoundError("Workflow not found");
-    }
+    async cancel(
+      workflowId: string,
+      userId: string
+    ): Promise<Workflow> {
+      const workflow = await deps.workflowDao.findByIdAndUser(workflowId, userId);
+      if (!workflow) {
+        throw new NotFoundError("Workflow not found");
+      }
 
-    if (TERMINAL_STATUSES.includes(workflow.status)) {
-      throw new ConflictError(
-        `Cannot cancel workflow with status '${workflow.status}'`
-      );
-    }
+      if (TERMINAL_STATUSES.includes(workflow.status)) {
+        throw new ConflictError(
+          `Cannot cancel workflow with status '${workflow.status}'`
+        );
+      }
 
-    const updated = await workflowDao.updateStatus(workflowId, "cancelled");
-    return updated!;
-  },
-};
+      const updated = await deps.workflowDao.updateStatus(workflowId, "cancelled");
+      return updated!;
+    },
+  };
+}
+
+export const workflowService = createWorkflowService();
