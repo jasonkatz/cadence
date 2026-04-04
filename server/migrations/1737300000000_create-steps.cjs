@@ -30,7 +30,7 @@ exports.up = (pgm) => {
     status: {
       type: "text",
       notNull: true,
-      default: "'pending'",
+      default: "pending",
     },
     started_at: {
       type: "timestamptz",
