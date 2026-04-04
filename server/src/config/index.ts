@@ -9,6 +9,9 @@ const envSchema = z.object({
   PORT: z.string().default("8080"),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   E2E: z.string().optional(),
+  ENCRYPTION_KEY: z
+    .string()
+    .default("dev-encryption-key-32-bytes-long!"),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -15,7 +15,7 @@
         "migrate:create": "dotenv -- bun node-pg-migrate create",
         "migrate:up": "dotenv -- bun node-pg-migrate up",
         "migrate:down": "dotenv -- bun node-pg-migrate down",
-        "db:reset": "bun run migrate:down -- --count 9999 && bun run migrate:up"
+        "db:reset": "dotenv -- bun src/scripts/db-reset.ts"
     },
     "dependencies": {
         "cors": "^2.8.5",

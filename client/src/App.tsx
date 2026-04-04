@@ -2,6 +2,7 @@ import { Routes, Route } from "react-router-dom";
 import { useAuth } from "./hooks/useAuth";
 import HomePage from "./pages/HomePage";
 import DashboardPage from "./pages/DashboardPage";
+import SettingsPage from "./pages/SettingsPage";
 import CallbackPage from "./pages/CallbackPage";
 
 function App() {
@@ -23,6 +24,7 @@ function App() {
     <Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/dashboard" element={<DashboardPage />} />
+      <Route path="/settings" element={<SettingsPage />} />
       <Route path="/callback" element={<CallbackPage />} />
     </Routes>
   );

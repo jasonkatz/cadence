@@ -64,6 +64,233 @@ paths:
                   success:
                     type: boolean
 
+  /v1/settings:
+    get:
+      summary: Get user settings
+      operationId: getSettings
+      tags:
+        - Settings
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        "401":
+          description: Unauthorized
+    put:
+      summary: Update user settings
+      operationId: updateSettings
+      tags:
+        - Settings
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsInput"
+      responses:
+        "200":
+          description: Settings updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+
+  /v1/workflows:
+    post:
+      summary: Create a workflow
+      operationId: createWorkflow
+      tags:
+        - Workflows
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkflowCreateInput"
+      responses:
+        "201":
+          description: Workflow created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workflow"
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+    get:
+      summary: List workflows
+      operationId: listWorkflows
+      tags:
+        - Workflows
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, running, complete, failed, cancelled]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of workflows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowList"
+        "401":
+          description: Unauthorized
+
+  /v1/workflows/{id}:
+    get:
+      summary: Get workflow detail
+      operationId: getWorkflow
+      tags:
+        - Workflows
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Workflow detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDetail"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Workflow not found
+
+  /v1/workflows/{id}/steps:
+    get:
+      summary: Get workflow steps
+      operationId: getWorkflowSteps
+      tags:
+        - Workflows
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: iteration
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of steps
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Step"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Workflow not found
+
+  /v1/workflows/{id}/runs:
+    get:
+      summary: Get workflow runs
+      operationId: getWorkflowRuns
+      tags:
+        - Workflows
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: agent_role
+          in: query
+          schema:
+            type: string
+            enum: [planner, dev, reviewer, e2e, e2e_verifier]
+        - name: iteration
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Run"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Workflow not found
+
+  /v1/workflows/{id}/cancel:
+    post:
+      summary: Cancel a workflow
+      operationId: cancelWorkflow
+      tags:
+        - Workflows
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Workflow cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workflow"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Workflow not found
+        "409":
+          description: Workflow cannot be cancelled (terminal status)
+
 components:
   securitySchemes:
     bearerAuth:
@@ -107,3 +334,226 @@ components:
       properties:
         error:
           type: string
+
+    Settings:
+      type: object
+      required:
+        - github_token
+      properties:
+        github_token:
+          type: string
+          nullable: true
+
+    SettingsInput:
+      type: object
+      required:
+        - github_token
+      properties:
+        github_token:
+          type: string
+
+    WorkflowCreateInput:
+      type: object
+      required:
+        - task
+        - repo
+      properties:
+        task:
+          type: string
+        repo:
+          type: string
+        branch:
+          type: string
+        requirements:
+          type: string
+        max_iters:
+          type: integer
+          default: 8
+
+    Workflow:
+      type: object
+      required:
+        - id
+        - task
+        - repo
+        - branch
+        - status
+        - iteration
+        - max_iters
+        - created_by
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        task:
+          type: string
+        repo:
+          type: string
+        branch:
+          type: string
+        requirements:
+          type: string
+          nullable: true
+        proposal:
+          type: string
+          nullable: true
+        pr_number:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [pending, running, complete, failed, cancelled]
+        iteration:
+          type: integer
+        max_iters:
+          type: integer
+        error:
+          type: string
+          nullable: true
+        created_by:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WorkflowListItem:
+      type: object
+      required:
+        - id
+        - task
+        - repo
+        - branch
+        - status
+        - iteration
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        task:
+          type: string
+        repo:
+          type: string
+        branch:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, complete, failed, cancelled]
+        iteration:
+          type: integer
+        pr_number:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WorkflowList:
+      type: object
+      required:
+        - workflows
+        - total
+      properties:
+        workflows:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkflowListItem"
+        total:
+          type: integer
+
+    WorkflowDetail:
+      allOf:
+        - $ref: "#/components/schemas/Workflow"
+        - type: object
+          required:
+            - steps
+          properties:
+            steps:
+              type: array
+              items:
+                $ref: "#/components/schemas/Step"
+
+    Step:
+      type: object
+      required:
+        - id
+        - workflow_id
+        - iteration
+        - type
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        workflow_id:
+          type: string
+          format: uuid
+        iteration:
+          type: integer
+        type:
+          type: string
+          enum: [plan, dev, ci, review, e2e, e2e_verify, signoff]
+        status:
+          type: string
+          enum: [pending, running, passed, failed]
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        detail:
+          type: string
+          nullable: true
+
+    Run:
+      type: object
+      required:
+        - id
+        - step_id
+        - workflow_id
+        - agent_role
+        - iteration
+        - prompt
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        step_id:
+          type: string
+          format: uuid
+        workflow_id:
+          type: string
+          format: uuid
+        agent_role:
+          type: string
+          enum: [planner, dev, reviewer, e2e, e2e_verifier]
+        iteration:
+          type: integer
+        prompt:
+          type: string
+        response:
+          type: string
+          nullable: true
+        exit_code:
+          type: integer
+          nullable: true
+        duration_secs:
+          type: number
+          nullable: true
+        created_at:
+          type: string
+          format: date-time

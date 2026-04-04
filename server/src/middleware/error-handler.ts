@@ -32,6 +32,13 @@ export class UnauthorizedError extends AppError {
   }
 }
 
+export class ConflictError extends AppError {
+  constructor(message = "Conflict") {
+    super(409, message);
+    this.name = "ConflictError";
+  }
+}
+
 export function errorHandler(
   err: Error,
   req: Request,
