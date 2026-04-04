@@ -1,14 +1,24 @@
 import { Request, Response, NextFunction, Router } from "express";
-import { workflowDao } from "../dao/workflow-dao";
-import { eventBus, WorkflowEvent } from "../events/event-bus";
+import { workflowDao as defaultWorkflowDao } from "../dao/workflow-dao";
+import { eventBus as defaultEventBus, WorkflowEvent } from "../events/event-bus";
 import { NotFoundError, UnauthorizedError } from "../middleware/error-handler";
 
-export function createEventsHandler() {
+export interface EventsHandlerDeps {
+  workflowDao: Pick<typeof defaultWorkflowDao, "findByIdAndUser">;
+  eventBus: Pick<typeof defaultEventBus, "subscribe" | "unsubscribe">;
+}
+
+const defaultDeps: EventsHandlerDeps = {
+  workflowDao: defaultWorkflowDao,
+  eventBus: defaultEventBus,
+};
+
+export function createEventsHandler(deps: EventsHandlerDeps = defaultDeps) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user) throw new UnauthorizedError();
 
-      const workflow = await workflowDao.findByIdAndUser(
+      const workflow = await deps.workflowDao.findByIdAndUser(
         req.params.id,
         req.user.id
       );
@@ -35,16 +45,16 @@ export function createEventsHandler() {
 
         // Close connection on terminal events
         if (event.type === "workflow:completed") {
-          eventBus.unsubscribe(workflow.id, handler);
+          deps.eventBus.unsubscribe(workflow.id, handler);
           res.end();
         }
       };
 
-      eventBus.subscribe(workflow.id, handler);
+      deps.eventBus.subscribe(workflow.id, handler);
 
       // Clean up on client disconnect
       req.on("close", () => {
-        eventBus.unsubscribe(workflow.id, handler);
+        deps.eventBus.unsubscribe(workflow.id, handler);
       });
     } catch (err) {
       next(err);

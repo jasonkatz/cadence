@@ -37,12 +37,7 @@ jobs:
         run: bun run build
 
       - name: Test
-        run: |
-          bun test src/utils/ src/services/
-          bun test src/dao/
-          bun test src/events/
-          bun test src/routes/
-          bun test src/engine/
+        run: bun test
 
   client:
     name: Client

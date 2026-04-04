@@ -1,9 +1,9 @@
-import { workflowDao, Workflow } from "../dao/workflow-dao";
-import { stepDao } from "../dao/step-dao";
-import { runDao } from "../dao/run-dao";
-import { eventBus } from "../events/event-bus";
-import { runPlannerAgent } from "./planner-agent";
-import { settingsService } from "../services/settings-service";
+import { workflowDao as defaultWorkflowDao, Workflow } from "../dao/workflow-dao";
+import { stepDao as defaultStepDao } from "../dao/step-dao";
+import { runDao as defaultRunDao } from "../dao/run-dao";
+import { eventBus as defaultEventBus } from "../events/event-bus";
+import { runPlannerAgent as defaultRunPlanner } from "./planner-agent";
+import { settingsService as defaultSettingsService } from "../services/settings-service";
 import { logger } from "../utils/logger";
 
 const POLL_INTERVAL_MS = 5_000;
@@ -12,10 +12,29 @@ const TERMINAL_STATUSES = ["complete", "failed", "cancelled"];
 let running = false;
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
+export interface EngineDeps {
+  workflowDao: typeof defaultWorkflowDao;
+  stepDao: typeof defaultStepDao;
+  runDao: typeof defaultRunDao;
+  eventBus: typeof defaultEventBus;
+  runPlannerAgent: typeof defaultRunPlanner;
+}
+
+const defaultDeps: EngineDeps = {
+  workflowDao: defaultWorkflowDao,
+  stepDao: defaultStepDao,
+  runDao: defaultRunDao,
+  eventBus: defaultEventBus,
+  runPlannerAgent: defaultRunPlanner,
+};
+
 export async function processWorkflow(
   workflow: Workflow,
-  githubToken: string
+  githubToken: string,
+  deps: EngineDeps = defaultDeps
 ): Promise<void> {
+  const { workflowDao, stepDao, runDao, eventBus, runPlannerAgent } = deps;
+
   // Don't process terminal workflows
   if (TERMINAL_STATUSES.includes(workflow.status)) {
     return;
@@ -119,10 +138,10 @@ export async function processWorkflow(
 
 export async function poll(): Promise<void> {
   try {
-    const workflow = await workflowDao.findPending();
+    const workflow = await defaultWorkflowDao.findPending();
     if (workflow) {
       logger.info("Processing workflow", { workflowId: workflow.id });
-      const githubToken = await settingsService.getDecryptedToken(
+      const githubToken = await defaultSettingsService.getDecryptedToken(
         workflow.created_by
       );
       await processWorkflow(workflow, githubToken);
