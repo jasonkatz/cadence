@@ -42,7 +42,7 @@ export const workflowDao = {
         data.repo,
         data.branch,
         data.requirements || null,
-        data.maxIters || 8,
+        data.maxIters ?? 8,
         data.createdBy,
       ]
     );

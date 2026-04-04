@@ -91,6 +91,24 @@ describe("workflowDao", () => {
     });
   });
 
+  describe("create", () => {
+    it("should pass maxIters 0 without defaulting to 8", async () => {
+      const wf = makeWorkflow({ max_iters: 0 });
+      mockQuery.mockResolvedValue({ rows: [wf] });
+
+      await workflowDao.create({
+        task: "test",
+        repo: "acme/app",
+        branch: "cadence/abc",
+        maxIters: 0,
+        createdBy: "user-1",
+      });
+
+      const params = mockQuery.mock.calls[0][1] as unknown[];
+      expect(params[4]).toBe(0);
+    });
+  });
+
   describe("updateIteration", () => {
     it("should increment the iteration field", async () => {
       const updated = makeWorkflow({ iteration: 1 });
