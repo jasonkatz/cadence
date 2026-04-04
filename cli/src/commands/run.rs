@@ -1,4 +1,4 @@
-use crate::api::{ApiClient, Workflow, WorkflowCreateInput, WorkflowDetail};
+use crate::api::{ApiClient, Workflow, WorkflowCreateInput};
 use crate::commands::Context;
 use crate::config::Credentials;
 use crate::output::{print_json, print_success};
@@ -41,7 +41,6 @@ pub async fn run(
     println!("Streaming progress...\n");
 
     let stream_path = format!("/v1/workflows/{}/events", workflow.id);
-    let workflow_id = workflow.id.clone();
     let workflow_repo = workflow.repo.clone();
     client
         .stream_sse(&stream_path, |event_type, data| {
@@ -74,7 +73,20 @@ pub async fn run(
                 "workflow:completed" => {
                     if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
                         let status = parsed["status"].as_str().unwrap_or("unknown");
-                        println!("\nWorkflow {}", status);
+                        if let Some(pr_number) = parsed["pr_number"].as_i64() {
+                            let pr_url = parsed["pr_url"]
+                                .as_str()
+                                .map(|s| s.to_string())
+                                .unwrap_or_else(|| {
+                                    format!(
+                                        "https://github.com/{}/pull/{}",
+                                        workflow_repo, pr_number
+                                    )
+                                });
+                            println!("\n  PR created: {}", pr_url);
+                        } else if status != "running" {
+                            println!("\nWorkflow {}", status);
+                        }
                         if let Some(error) = parsed["error"].as_str() {
                             println!("Error: {}", error);
                         }
@@ -86,17 +98,6 @@ pub async fn run(
             true // continue streaming
         })
         .await?;
-
-    // Fetch final state to show PR if available
-    let detail: WorkflowDetail = client
-        .get(&format!("/v1/workflows/{}", workflow_id))
-        .await?;
-    if let Some(pr_number) = detail.workflow.pr_number {
-        println!(
-            "\nPR: https://github.com/{}/pull/{}",
-            detail.workflow.repo, pr_number
-        );
-    }
 
     Ok(())
 }

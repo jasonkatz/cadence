@@ -208,20 +208,35 @@ export async function processWorkflow(
   const prTitle = workflow.task.substring(0, 72);
   const prBody = planResult.proposal;
 
-  const pr = await createPullRequest({
-    token: githubToken,
-    repo: workflow.repo,
-    head: workflow.branch,
-    title: prTitle,
-    body: prBody,
-  });
+  try {
+    const pr = await createPullRequest({
+      token: githubToken,
+      repo: workflow.repo,
+      head: workflow.branch,
+      title: prTitle,
+      body: prBody,
+    });
 
-  await workflowDao.updatePrNumber(workflow.id, pr.number);
-  eventBus.emit({
-    type: "workflow:updated",
-    workflowId: workflow.id,
-    data: { pr_number: pr.number, pr_url: pr.url },
-  });
+    await workflowDao.updatePrNumber(workflow.id, pr.number);
+    eventBus.emit({
+      type: "workflow:completed",
+      workflowId: workflow.id,
+      data: { status: "running", pr_number: pr.number, pr_url: pr.url },
+    });
+  } catch (error) {
+    const detail =
+      error instanceof Error ? error.message : String(error);
+    await workflowDao.updateError(
+      workflow.id,
+      `PR creation failed: ${detail.substring(0, 500)}`
+    );
+    eventBus.emit({
+      type: "workflow:completed",
+      workflowId: workflow.id,
+      data: { status: "failed" },
+    });
+    return;
+  }
 
   // Engine stops after dev step — remaining steps (ci, review, etc.) stay pending
 }

@@ -493,5 +493,45 @@ describe("workflow engine", () => {
       expect(devUpdateArg.exitCode).toBe(0);
       expect(devUpdateArg.durationSecs).toBe(120);
     });
+
+    it("should emit workflow:completed after successful PR creation", async () => {
+      const { deps, emittedEvents } = makeDeps();
+      const wf = makeWorkflow();
+
+      await processWorkflow(wf, TEST_TOKEN, deps);
+
+      const completedEvents = emittedEvents.filter(
+        (e) => e.type === "workflow:completed"
+      );
+      expect(completedEvents).toHaveLength(1);
+      const data = completedEvents[0].data as Record<string, unknown>;
+      expect(data.status).toBe("running");
+      expect(data.pr_number).toBe(42);
+    });
+
+    it("should fail workflow when PR creation throws", async () => {
+      const { deps, mocks, emittedEvents } = makeDeps();
+      const wf = makeWorkflow();
+
+      mocks.createPullRequest.mockRejectedValue(
+        new Error("GitHub API error creating PR (422): Validation Failed")
+      );
+
+      await processWorkflow(wf, TEST_TOKEN, deps);
+
+      // Workflow should be failed
+      expect(mocks.updateError).toHaveBeenCalledTimes(1);
+      const errorMsg = mocks.updateError.mock.calls[0][1] as string;
+      expect(errorMsg).toContain("PR creation failed");
+
+      // PR number should NOT be stored
+      expect(mocks.updatePrNumber).not.toHaveBeenCalled();
+
+      // workflow:completed event should fire
+      const completedEvents = emittedEvents.filter(
+        (e) => e.type === "workflow:completed"
+      );
+      expect(completedEvents).toHaveLength(1);
+    });
   });
 });
