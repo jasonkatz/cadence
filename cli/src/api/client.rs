@@ -116,7 +116,7 @@ impl ApiClient {
         use futures_util::StreamExt;
         use tokio::io::AsyncBufReadExt;
         let reader = tokio_util::io::StreamReader::new(
-            stream.map(|r| r.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))),
+            stream.map(|r| r.map_err(std::io::Error::other)),
         );
         let mut lines = reader.lines();
 
@@ -124,10 +124,10 @@ impl ApiClient {
         let mut current_data = String::new();
 
         while let Some(line) = lines.next_line().await? {
-            if line.starts_with("event: ") {
-                current_event = line[7..].to_string();
-            } else if line.starts_with("data: ") {
-                current_data = line[6..].to_string();
+            if let Some(event) = line.strip_prefix("event: ") {
+                current_event = event.to_string();
+            } else if let Some(data) = line.strip_prefix("data: ") {
+                current_data = data.to_string();
             } else if line.is_empty() && !current_event.is_empty() {
                 let should_continue = handler(&current_event, &current_data);
                 current_event.clear();

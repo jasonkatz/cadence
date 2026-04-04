@@ -70,13 +70,28 @@ const mockUpdateError = mock((_id: string, _e: string) =>
 );
 const mockFindById = mock((_id: string) => Promise.resolve(null as Workflow | null));
 
+const mockWorkflowCreate = mock((_data: unknown) => Promise.resolve(makeWorkflow()));
+const mockWorkflowFindByIdAndUser = mock((_id: string, _userId: string) =>
+  Promise.resolve(null as Workflow | null)
+);
+const mockWorkflowList = mock((_params: unknown) =>
+  Promise.resolve({ workflows: [], total: 0 })
+);
+const mockWorkflowUpdateIteration = mock((_id: string, _iter: number) =>
+  Promise.resolve(null as Workflow | null)
+);
+
 mock.module("../dao/workflow-dao", () => ({
   workflowDao: {
+    create: mockWorkflowCreate,
+    findById: mockFindById,
+    findByIdAndUser: mockWorkflowFindByIdAndUser,
     findPending: mockFindPending,
+    list: mockWorkflowList,
     updateStatus: mockUpdateStatus,
     updateProposal: mockUpdateProposal,
     updateError: mockUpdateError,
-    findById: mockFindById,
+    updateIteration: mockWorkflowUpdateIteration,
   },
 }));
 
@@ -87,10 +102,19 @@ const mockStepUpdateStatus = mock((_id: string, _s: string, _d?: string) =>
   Promise.resolve(null as Step | null)
 );
 
+const mockStepFindByWorkflowId = mock((_wfId: string, _filters?: unknown) =>
+  Promise.resolve([] as Step[])
+);
+const mockStepFindLatest = mock((_wfId: string) =>
+  Promise.resolve([] as Step[])
+);
+
 mock.module("../dao/step-dao", () => ({
   stepDao: {
     createIterationSteps: mockCreateIterationSteps,
     updateStatus: mockStepUpdateStatus,
+    findByWorkflowId: mockStepFindByWorkflowId,
+    findLatestIterationByWorkflowId: mockStepFindLatest,
   },
 }));
 
@@ -99,10 +123,15 @@ const mockRunUpdateResult = mock((_id: string, _data: unknown) =>
   Promise.resolve(null as Run | null)
 );
 
+const mockRunFindByWorkflowId = mock((_wfId: string, _filters?: unknown) =>
+  Promise.resolve([] as Run[])
+);
+
 mock.module("../dao/run-dao", () => ({
   runDao: {
     create: mockRunCreate,
     updateResult: mockRunUpdateResult,
+    findByWorkflowId: mockRunFindByWorkflowId,
   },
 }));
 
