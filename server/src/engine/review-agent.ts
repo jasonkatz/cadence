@@ -99,7 +99,9 @@ export function buildReviewPrompt(workflow: Workflow, diff: string): string {
     ``,
     `## Output Format`,
     ``,
-    `You MUST output a JSON verdict as the LAST line of your response, in exactly this format:`,
+    `First, write a brief human-readable review summary (2-4 sentences). Cover what you checked, whether the acceptance criteria are met, and any notable observations about code quality. This summary will be posted as a comment on the PR, so write it for a human audience.`,
+    ``,
+    `Then, as the LAST code block in your response, output a JSON verdict in exactly this format:`,
     ``,
     '```json',
     `{"review_pass": true}`,
@@ -110,8 +112,6 @@ export function buildReviewPrompt(workflow: Workflow, diff: string): string {
     '```json',
     `{"review_pass": false, "blocking_issues": ["issue 1", "issue 2"], "unmet_criteria": ["criterion 1"]}`,
     '```',
-    ``,
-    `The JSON verdict must be the last code block in your response.`,
   ];
 
   return parts.join("\n");

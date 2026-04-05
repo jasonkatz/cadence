@@ -416,13 +416,18 @@ async function postReviewComment(
   token: string,
   repo: string,
   prNumber: number,
-  reviewResult: { reviewPass: boolean; verdict: string },
+  reviewResult: { reviewPass: boolean; response: string },
   iteration: number
 ): Promise<void> {
   try {
+    const icon = reviewResult.reviewPass ? "\u2705" : "\u274c";
     const status = reviewResult.reviewPass ? "passed" : "failed";
-    const header = `**Review ${status}** (iteration ${iteration})`;
-    const body = `${header}\n\n\`\`\`json\n${reviewResult.verdict}\n\`\`\``;
+    const header = `${icon} **Review ${status}** (iteration ${iteration})`;
+    // Strip the JSON verdict block from the response — keep only the human-readable part
+    const summary = reviewResult.response
+      .replace(/```json[\s\S]*?```/g, "")
+      .trim();
+    const body = summary ? `${header}\n\n${summary}` : header;
     await deps.postPrComment({ token, repo, prNumber, body });
   } catch (error) {
     // Non-fatal — don't fail the workflow if we can't post a comment

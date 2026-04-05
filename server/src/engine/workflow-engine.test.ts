@@ -886,7 +886,7 @@ describe("workflow engine", () => {
       const args = mocks.postPrComment.mock.calls[0][0];
       expect(args.repo).toBe("acme/webapp");
       expect(args.prNumber).toBe(42);
-      expect(args.body).toContain("passed");
+      expect(args.body).toContain("Review passed");
     });
 
     it("should post a PR comment after review fails (before regression)", async () => {
@@ -919,7 +919,7 @@ describe("workflow engine", () => {
       // Should have 2 comments: one for fail, one for pass
       expect(mocks.postPrComment).toHaveBeenCalledTimes(2);
       const firstArgs = mocks.postPrComment.mock.calls[0][0];
-      expect(firstArgs.body).toContain("failed");
+      expect(firstArgs.body).toContain("Review failed");
     });
 
     it("should not fail workflow if PR comment fails to post", async () => {
