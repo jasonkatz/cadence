@@ -8,7 +8,7 @@
     "lint-staged": "^15"
   },
   "lint-staged": {
-    "client/**/*.{ts,tsx}": "bash -c 'cd client && yarn lint'",
+    "client/**/*.{ts,tsx}": "bash -c 'cd client && bun run lint'",
     "server/**/*.{ts,js}": "bash -c 'cd server && bun run lint'",
     "cli/**/*.rs": "bash -c 'cd cli && cargo clippy -- -D warnings'"
   }
