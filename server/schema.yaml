@@ -27,6 +27,20 @@ paths:
         "503":
           description: Server is unhealthy
 
+  /v1/ping:
+    get:
+      summary: Ping
+      operationId: ping
+      tags:
+        - System
+      responses:
+        "200":
+          description: Pong
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PingResponse"
+
   /v1/auth/me:
     get:
       summary: Get current user
@@ -326,6 +340,14 @@ components:
       bearerFormat: JWT
 
   schemas:
+    PingResponse:
+      type: object
+      required:
+        - pong
+      properties:
+        pong:
+          type: boolean
+
     HealthResponse:
       type: object
       required:
