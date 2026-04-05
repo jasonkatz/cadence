@@ -3,6 +3,8 @@ import { stepDao as defaultStepDao } from "../dao/step-dao";
 import { runDao as defaultRunDao } from "../dao/run-dao";
 import { eventBus as defaultEventBus } from "../events/event-bus";
 import { runPlannerAgent as defaultRunPlanner } from "./planner-agent";
+import { runDevAgent as defaultRunDevAgent } from "./dev-agent";
+import { githubService as defaultGithubService } from "../services/github-service";
 import { settingsService as defaultSettingsService } from "../services/settings-service";
 import { logger } from "../utils/logger";
 
@@ -18,6 +20,8 @@ export interface EngineDeps {
   runDao: typeof defaultRunDao;
   eventBus: typeof defaultEventBus;
   runPlannerAgent: typeof defaultRunPlanner;
+  runDevAgent: typeof defaultRunDevAgent;
+  createPullRequest: typeof defaultGithubService.createPullRequest;
 }
 
 const defaultDeps: EngineDeps = {
@@ -26,6 +30,8 @@ const defaultDeps: EngineDeps = {
   runDao: defaultRunDao,
   eventBus: defaultEventBus,
   runPlannerAgent: defaultRunPlanner,
+  runDevAgent: defaultRunDevAgent,
+  createPullRequest: defaultGithubService.createPullRequest.bind(defaultGithubService),
 };
 
 export async function processWorkflow(
@@ -33,7 +39,15 @@ export async function processWorkflow(
   githubToken: string,
   deps: EngineDeps = defaultDeps
 ): Promise<void> {
-  const { workflowDao, stepDao, runDao, eventBus, runPlannerAgent } = deps;
+  const {
+    workflowDao,
+    stepDao,
+    runDao,
+    eventBus,
+    runPlannerAgent,
+    runDevAgent,
+    createPullRequest,
+  } = deps;
 
   // Don't process terminal workflows
   if (TERMINAL_STATUSES.includes(workflow.status)) {
@@ -68,14 +82,13 @@ export async function processWorkflow(
     workflow.iteration
   );
 
-  // Find the plan step
+  // --- Plan step ---
   const planStep = steps.find((s) => s.type === "plan");
   if (!planStep) {
     await workflowDao.updateError(workflow.id, "No plan step created");
     return;
   }
 
-  // Transition plan step to running
   await stepDao.updateStatus(planStep.id, "running");
   eventBus.emit({
     type: "step:updated",
@@ -83,47 +96,31 @@ export async function processWorkflow(
     data: { stepId: planStep.id, type: "plan", status: "running" },
   });
 
-  // Create the run record
-  const prompt = `Plan task: ${workflow.task} for repo ${workflow.repo}`;
-  const run = await runDao.create({
+  const planPrompt = `Plan task: ${workflow.task} for repo ${workflow.repo}`;
+  const planRun = await runDao.create({
     stepId: planStep.id,
     workflowId: workflow.id,
     agentRole: "planner",
     iteration: workflow.iteration,
-    prompt,
+    prompt: planPrompt,
   });
 
-  // Execute the planner agent
-  const result = await runPlannerAgent(workflow, githubToken);
+  const planResult = await runPlannerAgent(workflow, githubToken);
 
-  // Record the result
-  await runDao.updateResult(run.id, {
-    response: result.response,
-    exitCode: result.exitCode,
-    durationSecs: result.durationSecs,
+  await runDao.updateResult(planRun.id, {
+    response: planResult.response,
+    exitCode: planResult.exitCode,
+    durationSecs: planResult.durationSecs,
   });
 
-  if (result.exitCode === 0 && result.proposal) {
-    // Plan succeeded
-    await stepDao.updateStatus(planStep.id, "passed", undefined);
-    eventBus.emit({
-      type: "step:updated",
-      workflowId: workflow.id,
-      data: { stepId: planStep.id, type: "plan", status: "passed" },
-    });
-
-    await workflowDao.updateProposal(workflow.id, result.proposal);
-    // Engine stops after plan step — remaining steps stay pending
-  } else {
-    // Plan failed
-    const detail = result.response || "Planner agent failed";
+  if (planResult.exitCode !== 0 || !planResult.proposal) {
+    const detail = planResult.response || "Planner agent failed";
     await stepDao.updateStatus(planStep.id, "failed", detail);
     eventBus.emit({
       type: "step:updated",
       workflowId: workflow.id,
       data: { stepId: planStep.id, type: "plan", status: "failed" },
     });
-
     await workflowDao.updateError(
       workflow.id,
       `Plan step failed: ${detail.substring(0, 500)}`
@@ -133,7 +130,115 @@ export async function processWorkflow(
       workflowId: workflow.id,
       data: { status: "failed" },
     });
+    return;
   }
+
+  // Plan succeeded
+  await stepDao.updateStatus(planStep.id, "passed", undefined);
+  eventBus.emit({
+    type: "step:updated",
+    workflowId: workflow.id,
+    data: { stepId: planStep.id, type: "plan", status: "passed" },
+  });
+  await workflowDao.updateProposal(workflow.id, planResult.proposal);
+
+  // Update workflow in-memory with proposal for dev agent
+  const workflowWithProposal = { ...workflow, proposal: planResult.proposal };
+
+  // --- Dev step ---
+  const devStep = steps.find((s) => s.type === "dev");
+  if (!devStep) {
+    await workflowDao.updateError(workflow.id, "No dev step created");
+    return;
+  }
+
+  await stepDao.updateStatus(devStep.id, "running");
+  eventBus.emit({
+    type: "step:updated",
+    workflowId: workflow.id,
+    data: { stepId: devStep.id, type: "dev", status: "running" },
+  });
+
+  const devPrompt = `Implement task: ${workflow.task} for repo ${workflow.repo} using proposal`;
+  const devRun = await runDao.create({
+    stepId: devStep.id,
+    workflowId: workflow.id,
+    agentRole: "dev",
+    iteration: workflow.iteration,
+    prompt: devPrompt,
+  });
+
+  const devResult = await runDevAgent(workflowWithProposal, githubToken);
+
+  await runDao.updateResult(devRun.id, {
+    response: devResult.response,
+    exitCode: devResult.exitCode,
+    durationSecs: devResult.durationSecs,
+  });
+
+  if (devResult.exitCode !== 0) {
+    const detail = devResult.response || "Dev agent failed";
+    await stepDao.updateStatus(devStep.id, "failed", detail);
+    eventBus.emit({
+      type: "step:updated",
+      workflowId: workflow.id,
+      data: { stepId: devStep.id, type: "dev", status: "failed" },
+    });
+    await workflowDao.updateError(
+      workflow.id,
+      `Dev step failed: ${detail.substring(0, 500)}`
+    );
+    eventBus.emit({
+      type: "workflow:completed",
+      workflowId: workflow.id,
+      data: { status: "failed" },
+    });
+    return;
+  }
+
+  // Dev succeeded
+  await stepDao.updateStatus(devStep.id, "passed", undefined);
+  eventBus.emit({
+    type: "step:updated",
+    workflowId: workflow.id,
+    data: { stepId: devStep.id, type: "dev", status: "passed" },
+  });
+
+  // --- Create PR ---
+  const prTitle = workflow.task.substring(0, 72);
+  const prBody = planResult.proposal;
+
+  try {
+    const pr = await createPullRequest({
+      token: githubToken,
+      repo: workflow.repo,
+      head: workflow.branch,
+      title: prTitle,
+      body: prBody,
+    });
+
+    await workflowDao.updatePrNumber(workflow.id, pr.number);
+    eventBus.emit({
+      type: "workflow:completed",
+      workflowId: workflow.id,
+      data: { status: "running", pr_number: pr.number, pr_url: pr.url },
+    });
+  } catch (error) {
+    const detail =
+      error instanceof Error ? error.message : String(error);
+    await workflowDao.updateError(
+      workflow.id,
+      `PR creation failed: ${detail.substring(0, 500)}`
+    );
+    eventBus.emit({
+      type: "workflow:completed",
+      workflowId: workflow.id,
+      data: { status: "failed" },
+    });
+    return;
+  }
+
+  // Engine stops after dev step — remaining steps (ci, review, etc.) stay pending
 }
 
 export async function poll(): Promise<void> {

@@ -41,6 +41,7 @@ pub async fn run(
     println!("Streaming progress...\n");
 
     let stream_path = format!("/v1/workflows/{}/events", workflow.id);
+    let workflow_repo = workflow.repo.clone();
     client
         .stream_sse(&stream_path, |event_type, data| {
             match event_type {
@@ -53,14 +54,39 @@ pub async fn run(
                 }
                 "workflow:updated" => {
                     if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
-                        let status = parsed["status"].as_str().unwrap_or("unknown");
-                        println!("  workflow: {}", status);
+                        if let Some(pr_number) = parsed["pr_number"].as_i64() {
+                            let pr_url = parsed["pr_url"]
+                                .as_str()
+                                .map(|s| s.to_string())
+                                .unwrap_or_else(|| {
+                                    format!(
+                                        "https://github.com/{}/pull/{}",
+                                        workflow_repo, pr_number
+                                    )
+                                });
+                            println!("\n  PR created: {}", pr_url);
+                        } else if let Some(status) = parsed["status"].as_str() {
+                            println!("  workflow: {}", status);
+                        }
                     }
                 }
                 "workflow:completed" => {
                     if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
                         let status = parsed["status"].as_str().unwrap_or("unknown");
-                        println!("\nWorkflow {}", status);
+                        if let Some(pr_number) = parsed["pr_number"].as_i64() {
+                            let pr_url = parsed["pr_url"]
+                                .as_str()
+                                .map(|s| s.to_string())
+                                .unwrap_or_else(|| {
+                                    format!(
+                                        "https://github.com/{}/pull/{}",
+                                        workflow_repo, pr_number
+                                    )
+                                });
+                            println!("\n  PR created: {}", pr_url);
+                        } else if status != "running" {
+                            println!("\nWorkflow {}", status);
+                        }
                         if let Some(error) = parsed["error"].as_str() {
                             println!("Error: {}", error);
                         }

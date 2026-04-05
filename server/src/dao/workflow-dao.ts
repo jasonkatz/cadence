@@ -148,6 +148,17 @@ export function createWorkflowDao(q: QueryFn) {
     );
     return result.rows[0] || null;
   },
+
+  async updatePrNumber(
+    id: string,
+    prNumber: number
+  ): Promise<Workflow | null> {
+    const result = await q<Workflow>(
+      `UPDATE workflows SET pr_number = $1, updated_at = now() WHERE id = $2 RETURNING *`,
+      [prNumber, id]
+    );
+    return result.rows[0] || null;
+  },
   };
 }
 

@@ -123,4 +123,27 @@ describe("workflowDao", () => {
       expect(result!.iteration).toBe(1);
     });
   });
+
+  describe("updatePrNumber", () => {
+    it("should set the pr_number on a workflow", async () => {
+      const updated = makeWorkflow({ pr_number: 42 });
+      mockQuery.mockResolvedValue({ rows: [updated] });
+
+      const result = await workflowDao.updatePrNumber("wf-1", 42);
+
+      expect(result).not.toBeNull();
+      expect(result!.pr_number).toBe(42);
+      const sql = mockQuery.mock.calls[0][0] as string;
+      expect(sql).toContain("pr_number");
+      expect(sql).toContain("RETURNING");
+    });
+
+    it("should return null when workflow not found", async () => {
+      mockQuery.mockResolvedValue({ rows: [] });
+
+      const result = await workflowDao.updatePrNumber("wf-nonexistent", 42);
+
+      expect(result).toBeNull();
+    });
+  });
 });

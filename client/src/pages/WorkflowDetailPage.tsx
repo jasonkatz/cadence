@@ -164,6 +164,19 @@ function WorkflowDetailPage() {
                 {workflow.status}
               </span>
             </div>
+            {workflow.pr_number && (
+              <div className="mt-4 flex items-center gap-2">
+                <span className="text-sm text-gray-500">Pull Request:</span>
+                <a
+                  href={`https://github.com/${workflow.repo}/pull/${workflow.pr_number}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                >
+                  #{workflow.pr_number}
+                </a>
+              </div>
+            )}
             {workflow.error && (
               <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
                 {workflow.error}

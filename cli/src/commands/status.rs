@@ -16,17 +16,26 @@ pub async fn run(ctx: &Context, workflow_id: &str) -> anyhow::Result<()> {
         print_json(&detail)?;
     } else {
         let w = &detail.workflow;
-        print_table(
-            &["Field", "Value"],
-            vec![
-                vec!["ID".to_string(), w.id.clone()],
-                vec!["Task".to_string(), w.task.clone()],
-                vec!["Repo".to_string(), w.repo.clone()],
-                vec!["Branch".to_string(), w.branch.clone()],
-                vec!["Status".to_string(), w.status.clone()],
-                vec!["Iteration".to_string(), w.iteration.to_string()],
-            ],
-        );
+        let mut rows = vec![
+            vec!["ID".to_string(), w.id.clone()],
+            vec!["Task".to_string(), w.task.clone()],
+            vec!["Repo".to_string(), w.repo.clone()],
+            vec!["Branch".to_string(), w.branch.clone()],
+            vec!["Status".to_string(), w.status.clone()],
+            vec!["Iteration".to_string(), w.iteration.to_string()],
+        ];
+
+        if let Some(pr_number) = w.pr_number {
+            rows.push(vec![
+                "PR".to_string(),
+                format!(
+                    "#{} (https://github.com/{}/pull/{})",
+                    pr_number, w.repo, pr_number
+                ),
+            ]);
+        }
+
+        print_table(&["Field", "Value"], rows);
 
         if !detail.steps.is_empty() {
             println!("\nSteps (iteration {}):", detail.steps[0].iteration);

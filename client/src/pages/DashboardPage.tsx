@@ -115,6 +115,9 @@ function DashboardPage() {
                       Status
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      PR
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Iteration
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -141,6 +144,21 @@ function DashboardPage() {
                         >
                           {w.status}
                         </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500">
+                        {w.pr_number ? (
+                          <a
+                            href={`https://github.com/${w.repo}/pull/${w.pr_number}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:text-blue-800 hover:underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            #{w.pr_number}
+                          </a>
+                        ) : (
+                          "-"
+                        )}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500">
                         {w.iteration}
