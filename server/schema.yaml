@@ -27,6 +27,20 @@ paths:
         "503":
           description: Server is unhealthy
 
+  /v1/version:
+    get:
+      summary: Get API version
+      operationId: getVersion
+      tags:
+        - System
+      responses:
+        "200":
+          description: API version info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionResponse"
+
   /v1/auth/me:
     get:
       summary: Get current user
@@ -326,6 +340,14 @@ components:
       bearerFormat: JWT
 
   schemas:
+    VersionResponse:
+      type: object
+      required:
+        - version
+      properties:
+        version:
+          type: string
+
     HealthResponse:
       type: object
       required:

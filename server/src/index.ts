@@ -9,6 +9,7 @@ import { rateLimiter } from "./middleware/rate-limiter";
 import { errorHandler } from "./middleware/error-handler";
 import healthRoutes from "./routes/health";
 import docsRoutes from "./routes/docs";
+import versionRoutes from "./routes/version";
 import authRoutes from "./routes/auth";
 import settingsRoutes from "./routes/settings";
 import workflowRoutes from "./routes/workflows";
@@ -24,6 +25,7 @@ app.use(requestLogger);
 // Public routes
 app.use(healthRoutes);
 app.use(docsRoutes);
+app.use("/v1/version", versionRoutes);
 
 // Authenticated routes
 const authenticatedRouter = express.Router();
