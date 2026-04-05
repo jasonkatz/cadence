@@ -15,7 +15,7 @@ export function requestLogger(req: Request, res: Response, next: NextFunction) {
   req.requestId = requestId;
   res.setHeader("x-request-id", requestId);
 
-  const skipLogging = ["/health", "/api-docs", "/schema.yaml"];
+  const skipLogging = ["/health", "/api-docs", "/schema.yaml", "/v1/uptime"];
   if (skipLogging.includes(req.path)) {
     return next();
   }

@@ -27,6 +27,20 @@ paths:
         "503":
           description: Server is unhealthy
 
+  /v1/uptime:
+    get:
+      summary: Process uptime
+      operationId: getUptime
+      tags:
+        - System
+      responses:
+        "200":
+          description: Process uptime in seconds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UptimeResponse"
+
   /v1/auth/me:
     get:
       summary: Get current user
@@ -338,6 +352,14 @@ components:
         timestamp:
           type: string
           format: date-time
+
+    UptimeResponse:
+      type: object
+      required:
+        - uptime_secs
+      properties:
+        uptime_secs:
+          type: number
 
     User:
       type: object
