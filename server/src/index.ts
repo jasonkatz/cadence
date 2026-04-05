@@ -8,6 +8,7 @@ import { extractUser } from "./middleware/extract-user";
 import { rateLimiter } from "./middleware/rate-limiter";
 import { errorHandler } from "./middleware/error-handler";
 import healthRoutes from "./routes/health";
+import helloRoutes from "./routes/hello";
 import docsRoutes from "./routes/docs";
 import authRoutes from "./routes/auth";
 import settingsRoutes from "./routes/settings";
@@ -23,6 +24,7 @@ app.use(requestLogger);
 
 // Public routes
 app.use(healthRoutes);
+app.use(helloRoutes);
 app.use(docsRoutes);
 
 // Authenticated routes
