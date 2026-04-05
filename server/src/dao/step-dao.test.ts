@@ -37,7 +37,7 @@ describe("stepDao", () => {
   });
 
   describe("createIterationSteps", () => {
-    it("should insert 7 steps for the given workflow and iteration", async () => {
+    it("should insert 7 steps for the given workflow and iteration 0", async () => {
       const steps = STEP_TYPES.map((type, i) =>
         makeStep({ id: `step-${i}`, type, workflow_id: "wf-1", iteration: 0 })
       );
@@ -51,6 +51,22 @@ describe("stepDao", () => {
       expect(sql).toContain("INSERT INTO steps");
       const params = mockQuery.mock.calls[0][1] as string[];
       expect(params).toContain("plan");
+      expect(params).toContain("signoff");
+    });
+
+    it("should skip plan step for iteration > 0", async () => {
+      const typesWithoutPlan = STEP_TYPES.filter((t) => t !== "plan");
+      const steps = typesWithoutPlan.map((type, i) =>
+        makeStep({ id: `step-${i}`, type, workflow_id: "wf-1", iteration: 1 })
+      );
+      mockQuery.mockResolvedValue({ rows: steps });
+
+      await stepDao.createIterationSteps("wf-1", 1);
+
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+      const params = mockQuery.mock.calls[0][1] as string[];
+      expect(params).not.toContain("plan");
+      expect(params).toContain("dev");
       expect(params).toContain("signoff");
     });
   });

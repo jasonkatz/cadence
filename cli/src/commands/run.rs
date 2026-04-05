@@ -54,7 +54,15 @@ pub async fn run(
                 }
                 "workflow:updated" => {
                     if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
-                        if let Some(pr_number) = parsed["pr_number"].as_i64() {
+                        if parsed["regression"].as_bool() == Some(true) {
+                            let iteration = parsed["iteration"].as_i64().unwrap_or(0);
+                            let failure = parsed["failureDetail"]
+                                .as_str()
+                                .unwrap_or("unknown failure");
+                            println!("\n  Regression triggered — iteration {}", iteration);
+                            println!("  Reason: {}", failure);
+                            println!();
+                        } else if let Some(pr_number) = parsed["pr_number"].as_i64() {
                             let pr_url = parsed["pr_url"]
                                 .as_str()
                                 .map(|s| s.to_string())

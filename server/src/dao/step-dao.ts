@@ -50,7 +50,8 @@ export function createStepDao(q: QueryFn) {
     workflowId: string,
     iteration: number
   ): Promise<Step[]> {
-    const types = ["plan", "dev", "ci", "review", "e2e", "e2e_verify", "signoff"];
+    const allTypes = ["plan", "dev", "ci", "review", "e2e", "e2e_verify", "signoff"];
+    const types = iteration > 0 ? allTypes.filter((t) => t !== "plan") : allTypes;
     const values = types
       .map(
         (_, i) =>
