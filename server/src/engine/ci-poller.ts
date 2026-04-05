@@ -81,8 +81,10 @@ export async function pollCiStatus(
     }
 
     // All completed — check conclusions
+    // "success" and "skipped" are both passing; everything else is a failure
+    const passingConclusions = new Set(["success", "skipped", "neutral"]);
     const failures = response.check_runs.filter(
-      (run) => run.conclusion !== "success"
+      (run) => !passingConclusions.has(run.conclusion ?? "")
     );
 
     if (failures.length === 0) {

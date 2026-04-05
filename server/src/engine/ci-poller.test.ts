@@ -37,6 +37,26 @@ describe("ci-poller", () => {
       expect(result.detail).toBeNull();
     });
 
+    it("should treat skipped and neutral conclusions as passing", async () => {
+      const deps = makeDeps({
+        getCheckRuns: mock(() =>
+          Promise.resolve({
+            total_count: 3,
+            check_runs: [
+              { name: "build", status: "completed", conclusion: "success", output: { summary: null } },
+              { name: "deploy", status: "completed", conclusion: "skipped", output: { summary: null } },
+              { name: "optional", status: "completed", conclusion: "neutral", output: { summary: null } },
+            ],
+          })
+        ),
+      });
+
+      const result = await pollCiStatus("acme/webapp", "abc123", "ghp_token", deps);
+
+      expect(result.status).toBe("passed");
+      expect(result.detail).toBeNull();
+    });
+
     it("should return failed when any check run fails", async () => {
       const deps = makeDeps({
         getCheckRuns: mock(() =>
