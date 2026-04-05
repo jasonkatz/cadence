@@ -1,3 +1,4 @@
+// Health check route - Phase 4 verified
 import { Router } from "express";
 import { pool } from "../db";
 import type { components } from "../types/api";
