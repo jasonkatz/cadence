@@ -2,7 +2,7 @@
 
 ## Summary
 
-Build the workflow engine that picks up pending workflows and drives them through the pipeline, starting with the plan step. After this phase, running `cadence run` creates a workflow, the engine transitions it to `running`, the planner agent reads the repo and generates a structured proposal, and the user can watch progress in real-time via SSE. This is the first phase where an agent actually executes, proving the core orchestration loop works end-to-end.
+Build the workflow engine that picks up pending workflows and drives them through the pipeline, starting with the plan step. After this phase, running `tmpo run` creates a workflow, the engine transitions it to `running`, the planner agent reads the repo and generates a structured proposal, and the user can watch progress in real-time via SSE. This is the first phase where an agent actually executes, proving the core orchestration loop works end-to-end.
 
 ## Acceptance Criteria
 
@@ -36,9 +36,9 @@ Build the workflow engine that picks up pending workflows and drives them throug
 
 ### CLI
 
-12. `cadence run --task "..." --repo owner/repo` streams step transitions to stdout as they happen (e.g., "plan: running...", "plan: passed"). The command blocks until the workflow reaches a terminal state or the user interrupts with Ctrl+C.
+12. `tmpo run --task "..." --repo owner/repo` streams step transitions to stdout as they happen (e.g., "plan: running...", "plan: passed"). The command blocks until the workflow reaches a terminal state or the user interrupts with Ctrl+C.
 
-13. `cadence proposal <workflow-id>` prints the proposal text to stdout. Returns an error if the workflow has no proposal yet.
+13. `tmpo proposal <workflow-id>` prints the proposal text to stdout. Returns an error if the workflow has no proposal yet.
 
 ### Web Client
 
@@ -58,5 +58,5 @@ Build the workflow engine that picks up pending workflows and drives them throug
 - **Regression loop** — No iteration cycling yet since only the plan step runs.
 - **PR creation** — No GitHub PR integration.
 - **Multi-user concurrency** — The engine handles one workflow at a time.
-- **Run logs CLI command** — `cadence logs` is a later phase.
+- **Run logs CLI command** — `tmpo logs` is a later phase.
 - **New workflow form in web client** — Creating workflows via the web is a later phase.

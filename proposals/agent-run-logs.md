@@ -2,16 +2,16 @@
 
 ## Context
 
-`cadence run` orchestrates multiple agents (dev, reviewer, e2e,
+`tmpo run` orchestrates multiple agents (dev, reviewer, e2e,
 e2e-verifier) through a pipeline. Each agent is a `claude` CLI
 invocation that produces stdout/stderr. Today, agent responses are
 consumed by the pipeline and discarded after use — there is no way to
 inspect what an agent said or how long it took after the fact.
 
-The existing `cadence run --help` shows no logging-related flags:
+The existing `tmpo run --help` shows no logging-related flags:
 
 ```
-Usage: cadence run [OPTIONS] --task <TASK> --repo <REPO>
+Usage: tmpo run [OPTIONS] --task <TASK> --repo <REPO>
 
 Options:
   -t, --task <TASK>
@@ -24,7 +24,7 @@ Options:
       --feedback <FEEDBACK>
 ```
 
-Workflow state is persisted to `~/.config/cadence/workflows/{id}.json`
+Workflow state is persisted to `~/.config/tmpo/workflows/{id}.json`
 but contains only stage transitions and metadata — not agent
 prompt/response content.
 
@@ -40,10 +40,10 @@ workflow run) so users can:
 
 ### Log storage
 
-Logs live alongside workflow state under the cadence config directory:
+Logs live alongside workflow state under the tmpo config directory:
 
 ```
-~/.config/cadence/logs/{workflow_id}/
+~/.config/tmpo/logs/{workflow_id}/
   dev.jsonl
   reviewer.jsonl
   e2e.jsonl
@@ -70,12 +70,12 @@ JSONL is chosen because:
 - Each line is independently parseable (resilient to crashes mid-write)
 - Easy to stream/pipe with standard tools (`jq`, `grep`, `wc -l`)
 
-### New CLI command: `cadence logs`
+### New CLI command: `tmpo logs`
 
 ```
 View agent run logs for a workflow
 
-Usage: cadence logs [OPTIONS] <WORKFLOW_ID>
+Usage: tmpo logs [OPTIONS] <WORKFLOW_ID>
 
 Arguments:
   <WORKFLOW_ID>  Workflow ID
@@ -90,13 +90,13 @@ Examples:
 
 ```bash
 # All logs for a workflow, ordered by timestamp
-cadence logs a1b2c3d4
+tmpo logs a1b2c3d4
 
 # Just the dev agent's logs
-cadence logs a1b2c3d4 --agent dev
+tmpo logs a1b2c3d4 --agent dev
 
 # Raw JSONL for piping into jq
-cadence logs a1b2c3d4 --raw | jq '.duration_secs'
+tmpo logs a1b2c3d4 --raw | jq '.duration_secs'
 ```
 
 Formatted output (default) shows a human-readable view:
@@ -151,4 +151,4 @@ abort the pipeline.
   or the workflow directory is removed)
 - Streaming/tailing logs from a running workflow (read-after-complete
   only)
-- Changes to `cadence run` flags (logging is always on, zero config)
+- Changes to `tmpo run` flags (logging is always on, zero config)

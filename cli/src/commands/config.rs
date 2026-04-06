@@ -10,7 +10,7 @@ pub async fn run_set(ctx: &Context, key: &str, value: &str) -> anyhow::Result<()
 
     let creds = Credentials::load()?;
     if !creds.is_valid() {
-        anyhow::bail!("Not authenticated. Run 'cadence login' first.");
+        anyhow::bail!("Not authenticated. Run 'tmpo login' first.");
     }
 
     let client = ApiClient::new(&ctx.base_url);
@@ -27,7 +27,7 @@ pub async fn run_set(ctx: &Context, key: &str, value: &str) -> anyhow::Result<()
 pub async fn run_get(ctx: &Context) -> anyhow::Result<()> {
     let creds = Credentials::load()?;
     if !creds.is_valid() {
-        anyhow::bail!("Not authenticated. Run 'cadence login' first.");
+        anyhow::bail!("Not authenticated. Run 'tmpo login' first.");
     }
 
     let client = ApiClient::new(&ctx.base_url);
@@ -44,7 +44,7 @@ pub async fn run_get(ctx: &Context) -> anyhow::Result<()> {
                 );
             }
             None => {
-                print_error("No GitHub token configured. Use 'cadence config set github-token <value>' to set one.");
+                print_error("No GitHub token configured. Use 'tmpo config set github-token <value>' to set one.");
             }
         }
     }

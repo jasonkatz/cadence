@@ -21,7 +21,7 @@ impl ApiClient {
         let creds = Credentials::load()?;
         creds
             .access_token
-            .ok_or_else(|| anyhow::anyhow!("Not authenticated. Run 'cadence login' first."))
+            .ok_or_else(|| anyhow::anyhow!("Not authenticated. Run 'tmpo login' first."))
     }
 
     pub async fn get<T: DeserializeOwned>(&self, path: &str) -> anyhow::Result<T> {

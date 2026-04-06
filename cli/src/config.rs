@@ -41,7 +41,7 @@ impl Credentials {
     fn path() -> anyhow::Result<PathBuf> {
         let config_dir = dirs::config_dir()
             .ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?;
-        Ok(config_dir.join("cadence").join("credentials.json"))
+        Ok(config_dir.join("tmpo").join("credentials.json"))
     }
 
     pub fn is_valid(&self) -> bool {

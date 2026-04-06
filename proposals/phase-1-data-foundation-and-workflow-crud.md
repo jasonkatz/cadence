@@ -16,7 +16,7 @@ Establish user configuration and basic CRUD operations for workflows, steps, and
 
 ### Workflow Creation
 
-4. `POST /v1/workflows` with `{ "task": "add login page", "repo": "acme/webapp" }` returns 201 with a JSON body containing: `id` (uuid), `task`, `repo`, `branch` (auto-generated as `cadence/<short-id>`), `status` ("pending"), `iteration` (0), `max_iters` (8), `created_at`, and `updated_at`. Fields `requirements`, `proposal`, `pr_number`, and `error` are null.
+4. `POST /v1/workflows` with `{ "task": "add login page", "repo": "acme/webapp" }` returns 201 with a JSON body containing: `id` (uuid), `task`, `repo`, `branch` (auto-generated as `tmpo/<short-id>`), `status` ("pending"), `iteration` (0), `max_iters` (8), `created_at`, and `updated_at`. Fields `requirements`, `proposal`, `pr_number`, and `error` are null.
 
 5. `POST /v1/workflows` with an explicit `branch`, `requirements`, and `max_iters` returns those values in the response instead of defaults.
 
@@ -46,19 +46,19 @@ Establish user configuration and basic CRUD operations for workflows, steps, and
 
 ### CLI: Configuration
 
-16. `cadence config set github-token <value>` prints a confirmation with the masked token (e.g., "GitHub token saved: ghp_****c123"). Running `cadence config get` afterward shows the masked token.
+16. `tmpo config set github-token <value>` prints a confirmation with the masked token (e.g., "GitHub token saved: ghp_****c123"). Running `tmpo config get` afterward shows the masked token.
 
-17. `cadence config get` with no token configured prints a message indicating no GitHub token is set. Supports `--json` for structured output.
+17. `tmpo config get` with no token configured prints a message indicating no GitHub token is set. Supports `--json` for structured output.
 
 ### CLI: Workflow Commands
 
-18. `cadence run --task "add login" --repo acme/webapp` prints the created workflow ID and status ("pending"). If no GitHub token is configured, prints an error directing the user to `cadence config set github-token`.
+18. `tmpo run --task "add login" --repo acme/webapp` prints the created workflow ID and status ("pending"). If no GitHub token is configured, prints an error directing the user to `tmpo config set github-token`.
 
-19. `cadence list` prints a table with columns: ID (first 8 chars), Task (truncated to ~50 chars), Repo, Status, Iteration, and Age (e.g., "2m ago"). Supports `--json`.
+19. `tmpo list` prints a table with columns: ID (first 8 chars), Task (truncated to ~50 chars), Repo, Status, Iteration, and Age (e.g., "2m ago"). Supports `--json`.
 
-20. `cadence status <workflow-id>` prints the workflow's status, task, repo, branch, iteration, and a table of steps for the current iteration showing type, status, and timing. Supports `--json`.
+20. `tmpo status <workflow-id>` prints the workflow's status, task, repo, branch, iteration, and a table of steps for the current iteration showing type, status, and timing. Supports `--json`.
 
-21. `cadence cancel <workflow-id>` prints a confirmation that the workflow was cancelled.
+21. `tmpo cancel <workflow-id>` prints a confirmation that the workflow was cancelled.
 
 ### Web Client
 
@@ -80,7 +80,7 @@ Establish user configuration and basic CRUD operations for workflows, steps, and
 - **Token encryption**: The GitHub PAT must be encrypted at rest in the database. Use AES-256-GCM with a server-side encryption key configured via environment variable (`ENCRYPTION_KEY`). The key should be required in production and can default to a dev-only value in development.
 - **Existing patterns**: The server already has a DAO/service/route layering pattern (see user-dao, user-service, auth routes). New code should follow this same pattern.
 - **CLI output**: The Rust CLI already has an `output.rs` module for formatting. New commands should use this for consistent output, supporting both human-readable and `--json` modes.
-- **Branch naming**: Default branch name should follow the pattern `cadence/<workflow-id-short>` unless explicitly provided.
+- **Branch naming**: Default branch name should follow the pattern `tmpo/<workflow-id-short>` unless explicitly provided.
 - **Pagination**: The `GET /v1/workflows` endpoint should support cursor-based or offset pagination from the start to avoid breaking changes later.
 - **OpenAPI schema**: The `schema.yaml` should be updated with the new endpoints and response shapes.
 
@@ -91,5 +91,5 @@ Establish user configuration and basic CRUD operations for workflows, steps, and
 - **GitHub integration** — No PR creation, CI polling, or diff reading. The GitHub token is stored but not used until Phase 3.
 - **Agent execution** — No agents are invoked.
 - **Workflow detail page** — The web client shows a list; the full detail page with step timeline is Phase 2.
-- **`cadence proposal` and `cadence logs` commands** — These depend on data that doesn't exist until agents run.
+- **`tmpo proposal` and `tmpo logs` commands** — These depend on data that doesn't exist until agents run.
 - **GitHub App OAuth flow** — Users provide a PAT directly. A GitHub App installation flow for more granular permissions is a follow-up.

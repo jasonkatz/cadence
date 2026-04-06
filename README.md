@@ -1,6 +1,6 @@
-# Cadence
+# Tmpo
 
-Autonomous software delivery pipeline. Describe a task, point it at a repo, and Cadence orchestrates AI agents to plan, implement, test, review, and ship a pull request — without manual intervention at each step.
+Autonomous software delivery pipeline. Describe a task, point it at a repo, and Tmpo orchestrates AI agents to plan, implement, test, review, and ship a pull request — without manual intervention at each step.
 
 ## How it works
 

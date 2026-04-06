@@ -49,7 +49,7 @@ function NewWorkflowPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center gap-6">
-              <h1 className="text-xl font-semibold">Cadence</h1>
+              <h1 className="text-xl font-semibold">Tmpo</h1>
               <Link
                 to="/dashboard"
                 className="text-sm text-gray-600 hover:text-gray-900"
@@ -138,7 +138,7 @@ function NewWorkflowPage() {
                   value={branch}
                   onChange={(e) => setBranch(e.target.value)}
                   className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
-                  placeholder="Optional (default: cadence/<short-id>)"
+                  placeholder="Optional (default: tmpo/<short-id>)"
                 />
               </div>
 

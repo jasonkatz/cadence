@@ -1,14 +1,14 @@
-# Product Brief: Cadence
+# Product Brief: Tmpo
 
 ## The Problem
 
 Shipping code still requires a human to sit in the loop for every step: write the code, wait for CI, read the review, fix the nits, run the tests, confirm the tests check out, merge. Each step is a context switch. Most of these steps are mechanical once the intent is clear.
 
-Cadence removes that burden. You describe what you want, point it at a repo, and it delivers a pull request that has been implemented, reviewed, tested, and verified — ready for a human to approve and merge.
+Tmpo removes that burden. You describe what you want, point it at a repo, and it delivers a pull request that has been implemented, reviewed, tested, and verified — ready for a human to approve and merge.
 
-## What Cadence Does
+## What Tmpo Does
 
-Cadence is an autonomous software delivery pipeline. It takes a proposal in and produces a reviewed PR with an E2E demo out.
+Tmpo is an autonomous software delivery pipeline. It takes a proposal in and produces a reviewed PR with an E2E demo out.
 
 The pipeline begins by generating a structured proposal from the user's task description. That proposal becomes the source of truth for every downstream agent — the dev agent implements against it, the reviewer checks correctness against it, and the E2E verifier confirms the demo proves it. This is how the system maximizes confidence: every stage is judged against the same specification, not against a vague natural language prompt.
 
@@ -18,7 +18,7 @@ The output is always a GitHub pull request with a passing review and an E2E evid
 
 ## Core Concepts
 
-Cadence has four primitives: **Workflows**, **Steps**, **Agents**, and **Runs**.
+Tmpo has four primitives: **Workflows**, **Steps**, **Agents**, and **Runs**.
 
 ### Workflow
 
@@ -405,7 +405,7 @@ Set e2e_pass to true only if every acceptance criterion has passing evidence.
 
 ## System Architecture
 
-Cadence is three components: a **server**, a **web client**, and a **CLI**.
+Tmpo is three components: a **server**, a **web client**, and a **CLI**.
 
 ### Server
 
@@ -446,27 +446,27 @@ The CLI is a thin client for users who prefer the terminal.
 
 ```bash
 # Start a workflow
-cadence run --task "add user profiles with avatar upload" --repo acme/webapp
+tmpo run --task "add user profiles with avatar upload" --repo acme/webapp
 
 # Start with a requirements doc
-cadence run --task "implement billing" --repo acme/api --requirements docs/billing-spec.md
+tmpo run --task "implement billing" --repo acme/api --requirements docs/billing-spec.md
 
 # Provide feedback on a completed PR to iterate further
-cadence run --task "implement billing" --repo acme/api --feedback "webhook handler needs idempotency"
+tmpo run --task "implement billing" --repo acme/api --feedback "webhook handler needs idempotency"
 
 # Check status
-cadence status <workflow-id>
-cadence list
+tmpo status <workflow-id>
+tmpo list
 
 # View the generated proposal
-cadence proposal <workflow-id>
+tmpo proposal <workflow-id>
 
 # View agent logs
-cadence logs <workflow-id>
-cadence logs <workflow-id> --agent dev
+tmpo logs <workflow-id>
+tmpo logs <workflow-id> --agent dev
 
 # Cancel
-cadence cancel <workflow-id>
+tmpo cancel <workflow-id>
 ```
 
 The CLI sends requests to the server and streams status updates back. It does not execute agents or manage state.

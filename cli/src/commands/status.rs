@@ -13,7 +13,7 @@ struct FullStatusOutput {
 pub async fn run(ctx: &Context, workflow_id: &str) -> anyhow::Result<()> {
     let creds = Credentials::load()?;
     if !creds.is_valid() {
-        anyhow::bail!("Not authenticated. Run 'cadence login' first.");
+        anyhow::bail!("Not authenticated. Run 'tmpo login' first.");
     }
 
     let client = ApiClient::new(&ctx.base_url);

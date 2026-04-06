@@ -2,19 +2,19 @@
 
 ## Summary
 
-Add observability and the remaining web client features. After this phase, users have full visibility into what every agent did via the `cadence logs` command and expandable run logs in the web UI, and can create new workflows directly from the web client. This phase rounds out the user experience without changing the pipeline's behavior.
+Add observability and the remaining web client features. After this phase, users have full visibility into what every agent did via the `tmpo logs` command and expandable run logs in the web UI, and can create new workflows directly from the web client. This phase rounds out the user experience without changing the pipeline's behavior.
 
 ## Acceptance Criteria
 
 ### CLI: Run Logs
 
-1. `cadence logs <workflow-id>` prints all runs for the workflow ordered by `created_at`, showing: timestamp, agent role, iteration, exit code, duration, and the prompt and response content.
+1. `tmpo logs <workflow-id>` prints all runs for the workflow ordered by `created_at`, showing: timestamp, agent role, iteration, exit code, duration, and the prompt and response content.
 
-2. `cadence logs <workflow-id> --agent <role>` filters to a specific agent role (planner, dev, reviewer, e2e, e2e_verifier).
+2. `tmpo logs <workflow-id> --agent <role>` filters to a specific agent role (planner, dev, reviewer, e2e, e2e_verifier).
 
-3. `cadence logs <workflow-id> --iteration <n>` filters to a specific iteration.
+3. `tmpo logs <workflow-id> --iteration <n>` filters to a specific iteration.
 
-4. `cadence logs` supports `--json` for structured output, consistent with other CLI commands.
+4. `tmpo logs` supports `--json` for structured output, consistent with other CLI commands.
 
 ### Web Client: Run Logs
 
@@ -39,7 +39,7 @@ Add observability and the remaining web client features. After this phase, users
 ## Technical Considerations
 
 - **Run log size**: Agent prompts and responses can be large (especially dev agent responses with full code). The web UI should handle large text gracefully — use virtualized scrolling or truncation with "show full" expansion.
-- **CLI formatting**: The `cadence logs` command should use the existing `output.rs` module. The formatted output should be readable in a terminal — consider truncating very long prompts/responses with a `--full` flag to show everything.
+- **CLI formatting**: The `tmpo logs` command should use the existing `output.rs` module. The formatted output should be readable in a terminal — consider truncating very long prompts/responses with a `--full` flag to show everything.
 - **Form validation**: The repo field should validate `owner/repo` format client-side before submitting. The server already validates on `POST /v1/workflows`.
 - **API reuse**: The `GET /v1/workflows/:id/runs` endpoint from Phase 1 provides all the data needed for run logs. No new endpoints are required.
 

@@ -7,7 +7,7 @@ function makeWorkflow(overrides?: Partial<Workflow>): Workflow {
     id: "wf-1",
     task: "add login page",
     repo: "acme/webapp",
-    branch: "cadence/abc123",
+    branch: "tmpo/abc123",
     requirements: null,
     proposal: null,
     pr_number: null,
@@ -161,7 +161,7 @@ describe("workflowService", () => {
       });
 
       const createArg = mocks.workflowCreate.mock.calls[0][0] as Record<string, unknown>;
-      expect(createArg.branch).toMatch(/^cadence\//);
+      expect(createArg.branch).toMatch(/^tmpo\//);
     });
   });
 

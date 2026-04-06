@@ -1,4 +1,4 @@
-# Cadence
+# Tmpo
 
 Autonomous software delivery pipeline. See `proposals/` for phase specs.
 

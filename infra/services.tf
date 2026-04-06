@@ -20,7 +20,7 @@ resource "railway_variable" "postgres_user" {
   environment_id = railway_project.this.default_environment.id
   service_id     = railway_service.postgres.id
   name           = "POSTGRES_USER"
-  value          = "cadence"
+  value          = "tmpo"
 }
 
 resource "railway_variable" "postgres_password" {
@@ -34,7 +34,7 @@ resource "railway_variable" "postgres_db" {
   environment_id = railway_project.this.default_environment.id
   service_id     = railway_service.postgres.id
   name           = "POSTGRES_DB"
-  value          = "cadence"
+  value          = "tmpo"
 }
 
 resource "railway_tcp_proxy" "postgres" {
@@ -66,7 +66,7 @@ resource "railway_variable" "server_database_url" {
   environment_id = railway_project.this.default_environment.id
   service_id     = railway_service.server.id
   name           = "DATABASE_URL"
-  value          = "postgresql://cadence:${var.postgres_password}@$${{postgres.RAILWAY_PRIVATE_DOMAIN}}:5432/cadence"
+  value          = "postgresql://tmpo:${var.postgres_password}@$${{postgres.RAILWAY_PRIVATE_DOMAIN}}:5432/tmpo"
 }
 
 resource "railway_variable" "server_auth0_audience" {

@@ -7,7 +7,7 @@ function makeWorkflow(overrides?: Partial<Workflow>): Workflow {
     id: "wf-1",
     task: "add login page",
     repo: "acme/webapp",
-    branch: "cadence/abc123",
+    branch: "tmpo/abc123",
     requirements: null,
     proposal: "## Summary\nAdd a login page with email/password form.\n\n## Acceptance Criteria\n- Login form renders\n- Form validates email",
     pr_number: 42,

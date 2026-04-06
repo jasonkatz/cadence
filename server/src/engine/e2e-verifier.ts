@@ -21,7 +21,7 @@ export async function runE2eVerifier(
   githubToken: string
 ): Promise<E2eVerifierResult> {
   const startTime = Date.now();
-  const workDir = await mkdtemp(join(tmpdir(), "cadence-e2e-verify-"));
+  const workDir = await mkdtemp(join(tmpdir(), "tmpo-e2e-verify-"));
 
   try {
     // Clone the repo (read-only context)

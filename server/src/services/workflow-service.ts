@@ -89,7 +89,7 @@ export function createWorkflowService(deps: WorkflowServiceDeps = defaultDeps) {
       }
 
       const tempId = crypto.randomUUID().split("-")[0];
-      const branch = input.branch || `cadence/${tempId}`;
+      const branch = input.branch || `tmpo/${tempId}`;
 
       const workflow = await deps.workflowDao.create({
         task: input.task,

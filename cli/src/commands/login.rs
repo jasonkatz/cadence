@@ -24,7 +24,7 @@ const AUTH0_AUDIENCE: &str = match option_env!("AUTH0_AUDIENCE") {
 pub async fn run(_ctx: &Context) -> anyhow::Result<()> {
     let creds = Credentials::load()?;
     if creds.is_valid() {
-        print_success("Already logged in. Use 'cadence logout' to sign out first.");
+        print_success("Already logged in. Use 'tmpo logout' to sign out first.");
         return Ok(());
     }
 
@@ -69,7 +69,7 @@ pub async fn run(_ctx: &Context) -> anyhow::Result<()> {
     };
     creds.save()?;
 
-    print_success("\nLogged in. Run 'cadence whoami' to see your account.");
+    print_success("\nLogged in. Run 'tmpo whoami' to see your account.");
     Ok(())
 }
 
@@ -103,7 +103,7 @@ async fn poll_for_token(
                 continue;
             }
             "expired_token" => {
-                anyhow::bail!("Authentication timed out. Run 'cadence login' to try again.");
+                anyhow::bail!("Authentication timed out. Run 'tmpo login' to try again.");
             }
             "access_denied" => {
                 anyhow::bail!("Authentication was denied.");

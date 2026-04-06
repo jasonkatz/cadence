@@ -7,7 +7,7 @@ function makeWorkflow(overrides?: Partial<Workflow>): Workflow {
     id: "wf-1",
     task: "add login page",
     repo: "acme/webapp",
-    branch: "cadence/abc123",
+    branch: "tmpo/abc123",
     requirements: null,
     proposal:
       "## Summary\nAdd a login page with email/password form.\n\n## Acceptance Criteria\n- Login form renders\n- Form validates email",
@@ -40,11 +40,11 @@ describe("e2e-agent", () => {
     });
 
     it("should include the repo and branch", () => {
-      const wf = makeWorkflow({ repo: "foo/bar", branch: "cadence/xyz" });
+      const wf = makeWorkflow({ repo: "foo/bar", branch: "tmpo/xyz" });
       const prompt = buildE2ePrompt(wf);
 
       expect(prompt).toContain("foo/bar");
-      expect(prompt).toContain("cadence/xyz");
+      expect(prompt).toContain("tmpo/xyz");
     });
 
     it("should instruct the agent to run user journeys without judging pass/fail", () => {

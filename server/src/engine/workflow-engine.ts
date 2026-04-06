@@ -18,13 +18,13 @@ import { logger } from "../utils/logger";
 // --- Job types ---
 
 export const JOB_TYPES = {
-  plan: "cadence.plan",
-  dev: "cadence.dev",
-  ci: "cadence.ci",
-  review: "cadence.review",
-  e2e: "cadence.e2e",
-  "e2e-verify": "cadence.e2e-verify",
-  signoff: "cadence.signoff",
+  plan: "tmpo.plan",
+  dev: "tmpo.dev",
+  ci: "tmpo.ci",
+  review: "tmpo.review",
+  e2e: "tmpo.e2e",
+  "e2e-verify": "tmpo.e2e-verify",
+  signoff: "tmpo.signoff",
 } as const;
 
 const EXPIRE_MINUTES: Record<string, number> = {
@@ -676,7 +676,7 @@ export function createEngine(connectionString: string, overrideDeps?: Partial<En
               error: error instanceof Error ? error.message : String(error),
             });
             // Update step status to failed if possible
-            const stepType = jobType.replace("cadence.", "").replace("-", "_");
+            const stepType = jobType.replace("tmpo.", "").replace("-", "_");
             const stepId = job.data.stepIds[stepType];
             if (stepId) {
               const detail = error instanceof Error ? error.message : String(error);
@@ -703,7 +703,7 @@ export function createEngine(connectionString: string, overrideDeps?: Partial<En
       // Query pg-boss job table for created/active jobs belonging to this workflow
       const result = await pool.query<{ id: string; name: string }>(
         `SELECT id, name FROM pgboss.job
-         WHERE name LIKE 'cadence.%'
+         WHERE name LIKE 'tmpo.%'
            AND state IN ('created', 'active')
            AND data->>'workflowId' = $1`,
         [workflowId]

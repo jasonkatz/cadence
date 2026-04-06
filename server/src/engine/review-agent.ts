@@ -21,7 +21,7 @@ export async function runReviewAgent(
   githubToken: string
 ): Promise<ReviewResult> {
   const startTime = Date.now();
-  const workDir = await mkdtemp(join(tmpdir(), "cadence-review-"));
+  const workDir = await mkdtemp(join(tmpdir(), "tmpo-review-"));
 
   try {
     // Clone the repo (read-only)

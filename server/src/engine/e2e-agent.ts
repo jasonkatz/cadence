@@ -20,7 +20,7 @@ export async function runE2eAgent(
   githubToken: string
 ): Promise<E2eResult> {
   const startTime = Date.now();
-  const workDir = await mkdtemp(join(tmpdir(), "cadence-e2e-"));
+  const workDir = await mkdtemp(join(tmpdir(), "tmpo-e2e-"));
 
   try {
     // Clone the repo at the working branch

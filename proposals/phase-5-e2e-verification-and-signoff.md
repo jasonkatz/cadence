@@ -2,7 +2,7 @@
 
 ## Summary
 
-Add the E2E agent, E2E verifier, and signoff step to complete the full pipeline. After this phase, Cadence runs the entire sequence: plan → dev → CI → review → E2E → E2E verify → signoff. A workflow that passes all stages transitions to `complete`, and the PR is ready for human review. Failures in E2E or verification trigger regression back to dev, just like CI and review failures. This is the phase where Cadence delivers its full value proposition: a verified pull request.
+Add the E2E agent, E2E verifier, and signoff step to complete the full pipeline. After this phase, Tmpo runs the entire sequence: plan → dev → CI → review → E2E → E2E verify → signoff. A workflow that passes all stages transitions to `complete`, and the PR is ready for human review. Failures in E2E or verification trigger regression back to dev, just like CI and review failures. This is the phase where Tmpo delivers its full value proposition: a verified pull request.
 
 ## Acceptance Criteria
 
@@ -32,7 +32,7 @@ Add the E2E agent, E2E verifier, and signoff step to complete the full pipeline.
 
 ### CLI
 
-9. When a workflow reaches `complete`, `cadence run` prints the PR URL and a confirmation that all stages passed. On `failed` after max iterations, it prints the last failure context and which step caused the final failure.
+9. When a workflow reaches `complete`, `tmpo run` prints the PR URL and a confirmation that all stages passed. On `failed` after max iterations, it prints the last failure context and which step caused the final failure.
 
 ### Web Client
 
@@ -50,7 +50,7 @@ Add the E2E agent, E2E verifier, and signoff step to complete the full pipeline.
 
 ## Out of Scope
 
-- **Auto-merge** — Cadence produces a PR ready for human review. Auto-merge is explicitly not included.
+- **Auto-merge** — Tmpo produces a PR ready for human review. Auto-merge is explicitly not included.
 - **Custom agent prompts** — System prompts are hardcoded from the product brief. User-customizable prompts are a follow-up.
 - **Billing and usage tracking** — No metering or cost tracking.
 - **Concurrent workflow execution** — Still one workflow at a time. A job queue is a follow-up.

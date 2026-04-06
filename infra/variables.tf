@@ -1,7 +1,7 @@
 variable "project_name" {
   description = "Railway project name"
   type        = string
-  default     = "cadence"
+  default     = "tmpo"
 }
 
 variable "auth0_audience" {

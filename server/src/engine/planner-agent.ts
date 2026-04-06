@@ -21,7 +21,7 @@ export async function runPlannerAgent(
   githubToken: string
 ): Promise<PlannerResult> {
   const startTime = Date.now();
-  const workDir = await mkdtemp(join(tmpdir(), "cadence-planner-"));
+  const workDir = await mkdtemp(join(tmpdir(), "tmpo-planner-"));
 
   try {
     // Clone the repo

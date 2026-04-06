@@ -1,11 +1,11 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: cadence-db
+    container_name: tmpo-db
     environment:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
-      POSTGRES_DB: cadence
+      POSTGRES_DB: tmpo
     ports:
       - "5432:5432"
     volumes:

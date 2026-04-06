@@ -40,7 +40,7 @@ describe("App", () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText("Cadence")).toBeInTheDocument();
+    expect(screen.getByText("Tmpo")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
   });
 });

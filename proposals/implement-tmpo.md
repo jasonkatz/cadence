@@ -1,8 +1,8 @@
-# Proposal: Implement Cadence
+# Proposal: Implement Tmpo
 
 ## Summary
 
-Cadence is an autonomous software delivery pipeline that takes a task description and a GitHub repository as input and produces a reviewed pull request with end-to-end verification proof as output. The system orchestrates a sequence of AI agents — planner, developer, reviewer, and E2E tester — through a fixed pipeline with automatic regression on failure. This proposal covers the full implementation: database schema, workflow engine, agent orchestration, GitHub integration, API endpoints, real-time progress streaming, CLI commands, and web client views. The goal is to go from the current scaffolding (auth-only) to a working system where a user can run `cadence run --task "..." --repo owner/repo` and receive a verified PR.
+Tmpo is an autonomous software delivery pipeline that takes a task description and a GitHub repository as input and produces a reviewed pull request with end-to-end verification proof as output. The system orchestrates a sequence of AI agents — planner, developer, reviewer, and E2E tester — through a fixed pipeline with automatic regression on failure. This proposal covers the full implementation: database schema, workflow engine, agent orchestration, GitHub integration, API endpoints, real-time progress streaming, CLI commands, and web client views. The goal is to go from the current scaffolding (auth-only) to a working system where a user can run `tmpo run --task "..." --repo owner/repo` and receive a verified PR.
 
 ## Acceptance Criteria
 
@@ -82,17 +82,17 @@ Cadence is an autonomous software delivery pipeline that takes a task descriptio
 
 ### CLI Commands
 
-32. `cadence run --task <text> --repo <owner/repo> [--branch <name>] [--requirements <path>] [--max-iters <n>]` creates a workflow via the API and streams progress to stdout. Each step's status is printed as it transitions. When the workflow completes, the PR URL is printed.
+32. `tmpo run --task <text> --repo <owner/repo> [--branch <name>] [--requirements <path>] [--max-iters <n>]` creates a workflow via the API and streams progress to stdout. Each step's status is printed as it transitions. When the workflow completes, the PR URL is printed.
 
-33. `cadence list` displays a table of the user's workflows showing: ID (short), task (truncated), repo, status, iteration, and age.
+33. `tmpo list` displays a table of the user's workflows showing: ID (short), task (truncated), repo, status, iteration, and age.
 
-34. `cadence status <workflow-id>` displays the workflow's current state including all steps for the current iteration with their statuses, timing, and detail.
+34. `tmpo status <workflow-id>` displays the workflow's current state including all steps for the current iteration with their statuses, timing, and detail.
 
-35. `cadence proposal <workflow-id>` prints the workflow's proposal to stdout.
+35. `tmpo proposal <workflow-id>` prints the workflow's proposal to stdout.
 
-36. `cadence logs <workflow-id> [--agent <role>] [--iteration <n>]` prints run logs for the workflow. Without filters, prints all runs. With `--agent`, filters to a specific role. With `--iteration`, filters to a specific iteration.
+36. `tmpo logs <workflow-id> [--agent <role>] [--iteration <n>]` prints run logs for the workflow. Without filters, prints all runs. With `--agent`, filters to a specific role. With `--iteration`, filters to a specific iteration.
 
-37. `cadence cancel <workflow-id>` sends a cancel request and confirms the cancellation.
+37. `tmpo cancel <workflow-id>` sends a cancel request and confirms the cancellation.
 
 ### Web Client
 
@@ -114,7 +114,7 @@ Cadence is an autonomous software delivery pipeline that takes a task descriptio
 - **Database migrations**: New tables should be created via the existing migration system (node-pg-migrate). Migrations should be idempotent and ordered.
 - **GitHub API access**: The server needs a GitHub App or personal access token to create PRs, read CI status, and manage comments. The token/app credentials should be configurable via environment variables.
 - **SSE implementation**: Use Express response streaming for SSE. The server should maintain a registry of active SSE connections per workflow and fan-out events to all connected clients.
-- **Branch naming**: Default branch name should follow the pattern `cadence/<workflow-id-short>` unless explicitly provided.
+- **Branch naming**: Default branch name should follow the pattern `tmpo/<workflow-id-short>` unless explicitly provided.
 - **Failure context propagation**: When a step fails, the relevant context (CI logs, review comments, test output) must be extracted and formatted into the dev agent's prompt for the next iteration. This is the mechanism that makes regressions productive rather than blind retries.
 - **Process isolation**: Each agent subprocess should run in its own working directory (a fresh clone or worktree of the target repo) to prevent interference between concurrent workflows.
 - **Graceful shutdown**: The server should handle SIGTERM by finishing the current step of any running workflow before shutting down, to avoid orphaned agent processes.
@@ -126,7 +126,7 @@ Cadence is an autonomous software delivery pipeline that takes a task descriptio
 - **Webhook notifications** — The product brief mentions webhook callbacks on state transitions. This is a separate feature that can be added after the core pipeline works.
 - **Model and budget overrides** — Per-role configuration of model, budget, and timeout can use hardcoded defaults initially. A configuration system for overrides is a follow-up.
 - **Multi-user concurrency** — The engine should handle one workflow at a time initially. A job queue for concurrent execution across users is a follow-up.
-- **PR merge** — Cadence produces a PR ready for human review. Auto-merge is explicitly not included.
+- **PR merge** — Tmpo produces a PR ready for human review. Auto-merge is explicitly not included.
 - **Billing and usage tracking** — No metering or cost tracking in this phase.
 - **Custom agent prompts** — System prompts are hardcoded from the product brief. User-customizable prompts are a follow-up.
 - **OAuth scoping for GitHub** — The initial implementation assumes a pre-configured GitHub token. A GitHub App installation flow is a follow-up.

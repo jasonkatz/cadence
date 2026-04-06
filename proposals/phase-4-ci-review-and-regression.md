@@ -36,9 +36,9 @@ Complete the feedback loop by adding CI status polling, the review agent, and th
 
 ### CLI
 
-12. `cadence run` prints regression information as it happens — the failure reason, the new iteration number, and progress through the new iteration's steps.
+12. `tmpo run` prints regression information as it happens — the failure reason, the new iteration number, and progress through the new iteration's steps.
 
-13. `cadence status <workflow-id>` displays the current iteration number and all steps for the current iteration with their statuses. `cadence status` with `--json` includes steps for all iterations.
+13. `tmpo status <workflow-id>` displays the current iteration number and all steps for the current iteration with their statuses. `tmpo status` with `--json` includes steps for all iterations.
 
 ### Web Client
 

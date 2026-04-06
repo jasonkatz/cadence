@@ -28,9 +28,9 @@ Add the dev agent and GitHub PR creation to the pipeline. After this phase, the 
 
 ### CLI
 
-9. When the dev step completes and a PR is created, `cadence run` prints the PR URL to stdout.
+9. When the dev step completes and a PR is created, `tmpo run` prints the PR URL to stdout.
 
-10. `cadence status <workflow-id>` shows the PR number and URL when a PR exists.
+10. `tmpo status <workflow-id>` shows the PR number and URL when a PR exists.
 
 ### Web Client
 
@@ -41,7 +41,7 @@ Add the dev agent and GitHub PR creation to the pipeline. After this phase, the 
 ## Technical Considerations
 
 - **Process isolation**: Each dev agent subprocess should run in its own working directory (a fresh clone of the target repo) to prevent interference between concurrent workflows. The clone should be cleaned up after the step completes. The dev agent uses read-write tools (Bash, Edit, Read, Write, Glob, Grep).
-- **Branch naming**: The workflow's branch field (defaulting to `cadence/<short-id>`) is used as the target branch for the dev agent's pushes and the PR's head branch.
+- **Branch naming**: The workflow's branch field (defaulting to `tmpo/<short-id>`) is used as the target branch for the dev agent's pushes and the PR's head branch.
 - **Git authentication**: The clone and push operations use the user's stored GitHub token. This can be injected via the `GIT_ASKPASS` mechanism or by configuring the clone URL with the token.
 - **PR creation**: Use the GitHub REST API (or Octokit) to create the PR. The server should handle the case where the branch doesn't exist on the remote yet (the dev agent creates it by pushing).
 - **Failure context propagation**: When the dev step fails, capture the agent's output as failure context. This context will be used in Phase 4 when regression iterations are implemented.

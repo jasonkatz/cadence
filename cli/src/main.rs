@@ -9,8 +9,8 @@ mod output;
 use commands::{cancel, config as config_cmd, list, login, logout, logs, proposal, run, status, whoami};
 
 #[derive(Parser)]
-#[command(name = "cadence")]
-#[command(about = "Command-line interface for Cadence")]
+#[command(name = "tmpo")]
+#[command(about = "Command-line interface for Tmpo")]
 #[command(version)]
 struct Cli {
     /// Use localhost:8080 instead of production
@@ -46,7 +46,7 @@ enum Commands {
         /// Target repository (owner/repo)
         #[arg(short, long)]
         repo: String,
-        /// Branch name (default: cadence/<short-id>)
+        /// Branch name (default: tmpo/<short-id>)
         #[arg(short, long)]
         branch: Option<String>,
         /// Path to requirements file in the repo

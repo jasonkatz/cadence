@@ -18,7 +18,7 @@ export async function runDevAgent(
   githubToken: string
 ): Promise<DevResult> {
   const startTime = Date.now();
-  const workDir = await mkdtemp(join(tmpdir(), "cadence-dev-"));
+  const workDir = await mkdtemp(join(tmpdir(), "tmpo-dev-"));
 
   try {
     // Clone the repo
@@ -34,11 +34,11 @@ export async function runDevAgent(
     });
 
     // Configure git for commits
-    await execCommand("git", ["config", "user.email", "cadence@bot.dev"], {
+    await execCommand("git", ["config", "user.email", "tmpo@bot.dev"], {
       cwd: workDir,
       timeoutMs: 5_000,
     });
-    await execCommand("git", ["config", "user.name", "Cadence Bot"], {
+    await execCommand("git", ["config", "user.name", "Tmpo Bot"], {
       cwd: workDir,
       timeoutMs: 5_000,
     });
@@ -64,7 +64,7 @@ export async function runDevAgent(
 
     const commitResult = await execCommand(
       "git",
-      ["commit", "-m", `cadence: ${workflow.task.substring(0, 60)}`],
+      ["commit", "-m", `tmpo: ${workflow.task.substring(0, 60)}`],
       {
         cwd: workDir,
         timeoutMs: 10_000,

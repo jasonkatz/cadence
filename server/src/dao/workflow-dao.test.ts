@@ -8,7 +8,7 @@ function makeWorkflow(overrides?: Partial<Workflow>): Workflow {
     id: "wf-1",
     task: "add login page",
     repo: "acme/webapp",
-    branch: "cadence/abc123",
+    branch: "tmpo/abc123",
     requirements: null,
     proposal: null,
     pr_number: null,
@@ -102,7 +102,7 @@ describe("workflowDao", () => {
       await workflowDao.create({
         task: "test",
         repo: "acme/app",
-        branch: "cadence/abc",
+        branch: "tmpo/abc",
         maxIters: 0,
         createdBy: "user-1",
       });

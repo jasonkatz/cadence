@@ -16,7 +16,7 @@ import {
 } from "./workflow-engine";
 
 function makeWorkflow(overrides?: Partial<Workflow>): Workflow {
-  return { id: "wf-1", task: "add login page", repo: "acme/webapp", branch: "cadence/abc123", requirements: null, proposal: null, pr_number: null, status: "pending", iteration: 0, max_iters: 8, error: null, created_by: "user-1", created_at: new Date(), updated_at: new Date(), ...overrides };
+  return { id: "wf-1", task: "add login page", repo: "acme/webapp", branch: "tmpo/abc123", requirements: null, proposal: null, pr_number: null, status: "pending", iteration: 0, max_iters: 8, error: null, created_by: "user-1", created_at: new Date(), updated_at: new Date(), ...overrides };
 }
 function makeStep(overrides?: Partial<Step>): Step {
   return { id: "step-1", workflow_id: "wf-1", iteration: 0, type: "plan", status: "pending", started_at: null, finished_at: null, detail: null, ...overrides };
@@ -129,7 +129,7 @@ describe("workflow engine", () => {
       await handlePlan(makeJobData({ iteration: 8 }), deps);
       expect(mocks.updateError.mock.calls[0][1]).toContain("iteration limit");
     });
-    it("should enqueue cadence.dev after plan succeeds", async () => {
+    it("should enqueue tmpo.dev after plan succeeds", async () => {
       const { deps, enqueuedJobs } = makeDeps();
       await handlePlan(makeJobData(), deps);
       expect(enqueuedJobs).toHaveLength(1);
@@ -227,10 +227,10 @@ describe("workflow engine", () => {
     });
     it("should pass head SHA from branch to CI poller", async () => {
       const { deps, mocks } = makeDeps();
-      mocks.findById.mockResolvedValue(makeWorkflow({ status: "running", pr_number: 42, branch: "cadence/feat-1" }));
+      mocks.findById.mockResolvedValue(makeWorkflow({ status: "running", pr_number: 42, branch: "tmpo/feat-1" }));
       mocks.getHeadSha.mockResolvedValue("deadbeef");
       await handleCi(makeJobData(), deps);
-      expect(mocks.getHeadSha).toHaveBeenCalledWith(TEST_TOKEN, "acme/webapp", "cadence/feat-1");
+      expect(mocks.getHeadSha).toHaveBeenCalledWith(TEST_TOKEN, "acme/webapp", "tmpo/feat-1");
       expect(mocks.pollCiStatus).toHaveBeenCalledWith("acme/webapp", "deadbeef", TEST_TOKEN);
     });
     it("should regress when ci step fails", async () => {

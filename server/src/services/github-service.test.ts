@@ -41,7 +41,7 @@ describe("githubService", () => {
       await service.createPullRequest({
         token: "ghp_test123",
         repo: "acme/webapp",
-        head: "cadence/abc123",
+        head: "tmpo/abc123",
         title: "Add login page",
         body: "## Summary\nImplement login page.",
       });
@@ -55,7 +55,7 @@ describe("githubService", () => {
       expect(headers["Authorization"]).toBe("Bearer ghp_test123");
 
       const body = JSON.parse(opts.body as string);
-      expect(body.head).toBe("cadence/abc123");
+      expect(body.head).toBe("tmpo/abc123");
       expect(body.title).toBe("Add login page");
       expect(body.body).toBe("## Summary\nImplement login page.");
     });
@@ -67,7 +67,7 @@ describe("githubService", () => {
       const result = await service.createPullRequest({
         token: "ghp_test123",
         repo: "acme/webapp",
-        head: "cadence/abc123",
+        head: "tmpo/abc123",
         title: "Add login page",
         body: "body text",
       });
@@ -102,7 +102,7 @@ describe("githubService", () => {
         service.createPullRequest({
           token: "ghp_test123",
           repo: "acme/webapp",
-          head: "cadence/abc123",
+          head: "tmpo/abc123",
           title: "test",
           body: "body",
         })
@@ -119,7 +119,7 @@ describe("githubService", () => {
       await service.createPullRequest({
         token: "ghp_test123",
         repo: "acme/webapp",
-        head: "cadence/abc123",
+        head: "tmpo/abc123",
         title: longTask.substring(0, 72),
         body: "body",
       });
@@ -157,7 +157,7 @@ describe("githubService", () => {
       const result = await service.createPullRequest({
         token: "ghp_test123",
         repo: "acme/webapp",
-        head: "cadence/abc123",
+        head: "tmpo/abc123",
         title: "test",
         body: "body",
       });

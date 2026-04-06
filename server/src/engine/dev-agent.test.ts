@@ -6,7 +6,7 @@ function makeWorkflow(overrides?: Partial<Workflow>): Workflow {
     id: "wf-1",
     task: "add login page",
     repo: "acme/webapp",
-    branch: "cadence/abc123",
+    branch: "tmpo/abc123",
     requirements: null,
     proposal: "## Summary\nAdd a login page with email/password form.",
     pr_number: null,
@@ -40,11 +40,11 @@ describe("dev-agent", () => {
     });
 
     it("should include the repo and branch", () => {
-      const wf = makeWorkflow({ repo: "foo/bar", branch: "cadence/xyz" });
+      const wf = makeWorkflow({ repo: "foo/bar", branch: "tmpo/xyz" });
       const prompt = buildDevPrompt(wf);
 
       expect(prompt).toContain("foo/bar");
-      expect(prompt).toContain("cadence/xyz");
+      expect(prompt).toContain("tmpo/xyz");
     });
 
     it("should instruct the agent to commit and push", () => {
@@ -56,10 +56,10 @@ describe("dev-agent", () => {
     });
 
     it("should instruct agent to work on the correct branch", () => {
-      const wf = makeWorkflow({ branch: "cadence/my-feature" });
+      const wf = makeWorkflow({ branch: "tmpo/my-feature" });
       const prompt = buildDevPrompt(wf);
 
-      expect(prompt).toContain("cadence/my-feature");
+      expect(prompt).toContain("tmpo/my-feature");
     });
 
     it("should include requirements file when provided", () => {
