@@ -45,6 +45,13 @@ function makeDeps() {
 
   const mockHasGithubToken = mock((_userId: string) => Promise.resolve(true));
 
+  const mockEnqueueWorkflow = mock((_workflowId: string, _iteration: number) =>
+    Promise.resolve()
+  );
+  const mockCancelWorkflowJobs = mock((_workflowId: string) =>
+    Promise.resolve()
+  );
+
   const deps: WorkflowServiceDeps = {
     workflowDao: {
       create: mockWorkflowCreate,
@@ -62,6 +69,8 @@ function makeDeps() {
     settingsService: {
       hasGithubToken: mockHasGithubToken,
     },
+    enqueueWorkflow: mockEnqueueWorkflow,
+    cancelWorkflowJobs: mockCancelWorkflowJobs,
   };
 
   return {
@@ -75,6 +84,8 @@ function makeDeps() {
       stepFindLatest: mockStepFindLatest,
       runFindByWorkflowId: mockRunFindByWorkflowId,
       hasGithubToken: mockHasGithubToken,
+      enqueueWorkflow: mockEnqueueWorkflow,
+      cancelWorkflowJobs: mockCancelWorkflowJobs,
     },
   };
 }

@@ -62,7 +62,7 @@ export async function runDevAgent(
       timeoutMs: 10_000,
     });
 
-    await execCommand(
+    const commitResult = await execCommand(
       "git",
       ["commit", "-m", `cadence: ${workflow.task.substring(0, 60)}`],
       {
@@ -70,13 +70,19 @@ export async function runDevAgent(
         timeoutMs: 10_000,
       }
     );
+    if (commitResult.exitCode !== 0) {
+      throw new Error(`git commit failed (exit ${commitResult.exitCode}): ${commitResult.stderr || commitResult.stdout}`);
+    }
 
     // Set up push URL with token and push
     const pushUrl = `https://x-access-token:${githubToken}@github.com/${workflow.repo}.git`;
-    await execCommand("git", ["push", pushUrl, workflow.branch], {
+    const pushResult = await execCommand("git", ["push", pushUrl, workflow.branch], {
       cwd: workDir,
       timeoutMs: 60_000,
     });
+    if (pushResult.exitCode !== 0) {
+      throw new Error(`git push failed (exit ${pushResult.exitCode}): ${pushResult.stderr || pushResult.stdout}`);
+    }
 
     const durationSecs = Math.round((Date.now() - startTime) / 1000);
 
@@ -140,7 +146,7 @@ function execCommand(
   cmd: string,
   args: string[],
   opts: { cwd?: string; timeoutMs?: number } = {}
-): Promise<{ stdout: string; exitCode: number }> {
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   return new Promise((resolve, reject) => {
     const proc = spawn(cmd, args, {
       cwd: opts.cwd,
@@ -148,13 +154,13 @@ function execCommand(
     });
 
     let stdout = "";
-    let _stderr = "";
+    let stderr = "";
 
     proc.stdout.on("data", (data) => {
       stdout += data.toString();
     });
     proc.stderr.on("data", (data) => {
-      _stderr += data.toString();
+      stderr += data.toString();
     });
 
     const timer = opts.timeoutMs
@@ -166,7 +172,7 @@ function execCommand(
 
     proc.on("close", (code) => {
       if (timer) clearTimeout(timer);
-      resolve({ stdout, exitCode: code ?? 1 });
+      resolve({ stdout, stderr, exitCode: code ?? 1 });
     });
 
     proc.on("error", (err) => {

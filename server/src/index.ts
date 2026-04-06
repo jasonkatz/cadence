@@ -13,7 +13,8 @@ import authRoutes from "./routes/auth";
 import settingsRoutes from "./routes/settings";
 import workflowRoutes from "./routes/workflows";
 import eventsRoutes from "./routes/events";
-import { startEngine, stopEngine } from "./engine/workflow-engine";
+import { createEngine } from "./engine/workflow-engine";
+import { setEngineFunctions } from "./services/workflow-service";
 
 const app = express();
 
@@ -46,15 +47,21 @@ app.use(errorHandler);
 
 const port = parseInt(config.PORT, 10);
 
-const server = app.listen(port, () => {
+const engine = createEngine(config.DATABASE_URL);
+setEngineFunctions({
+  enqueueWorkflow: engine.enqueueWorkflow.bind(engine),
+  cancelWorkflowJobs: engine.cancelWorkflowJobs.bind(engine),
+});
+
+const server = app.listen(port, async () => {
   logger.info(`Server running on port ${port}`);
-  startEngine();
+  await engine.start();
 });
 
 // Graceful shutdown
-function shutdown(signal: string) {
+async function shutdown(signal: string) {
   logger.info(`Received ${signal}, shutting down gracefully`);
-  stopEngine();
+  await engine.stop();
   server.close(() => {
     logger.info("Server closed");
     process.exit(0);

@@ -37,6 +37,24 @@ export interface WorkflowServiceDeps {
   stepDao: Pick<typeof defaultStepDao, "findByWorkflowId" | "findLatestIterationByWorkflowId">;
   runDao: Pick<typeof defaultRunDao, "findByWorkflowId">;
   settingsService: Pick<typeof defaultSettingsService, "hasGithubToken">;
+  enqueueWorkflow: (workflowId: string, iteration: number) => Promise<void>;
+  cancelWorkflowJobs: (workflowId: string) => Promise<void>;
+}
+
+// Engine functions are set at startup via setEngineFunctions() to avoid circular imports
+let engineEnqueue: (workflowId: string, iteration: number) => Promise<void> = async () => {
+  throw new Error("Engine not initialized");
+};
+let engineCancel: (workflowId: string) => Promise<void> = async () => {
+  throw new Error("Engine not initialized");
+};
+
+export function setEngineFunctions(fns: {
+  enqueueWorkflow: (workflowId: string, iteration: number) => Promise<void>;
+  cancelWorkflowJobs: (workflowId: string) => Promise<void>;
+}): void {
+  engineEnqueue = fns.enqueueWorkflow;
+  engineCancel = fns.cancelWorkflowJobs;
 }
 
 const defaultDeps: WorkflowServiceDeps = {
@@ -44,6 +62,8 @@ const defaultDeps: WorkflowServiceDeps = {
   stepDao: defaultStepDao,
   runDao: defaultRunDao,
   settingsService: defaultSettingsService,
+  enqueueWorkflow: (...args) => engineEnqueue(...args),
+  cancelWorkflowJobs: (...args) => engineCancel(...args),
 };
 
 const TERMINAL_STATUSES = ["complete", "failed", "cancelled"];
@@ -71,7 +91,7 @@ export function createWorkflowService(deps: WorkflowServiceDeps = defaultDeps) {
       const tempId = crypto.randomUUID().split("-")[0];
       const branch = input.branch || `cadence/${tempId}`;
 
-      return deps.workflowDao.create({
+      const workflow = await deps.workflowDao.create({
         task: input.task,
         repo: input.repo,
         branch,
@@ -79,6 +99,10 @@ export function createWorkflowService(deps: WorkflowServiceDeps = defaultDeps) {
         maxIters: input.max_iters,
         createdBy: userId,
       });
+
+      await deps.enqueueWorkflow(workflow.id, workflow.iteration);
+
+      return workflow;
     },
 
     async list(
@@ -163,6 +187,7 @@ export function createWorkflowService(deps: WorkflowServiceDeps = defaultDeps) {
         );
       }
 
+      await deps.cancelWorkflowJobs(workflowId);
       const updated = await deps.workflowDao.updateStatus(workflowId, "cancelled");
       return updated!;
     },

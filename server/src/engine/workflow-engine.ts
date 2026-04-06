@@ -1,3 +1,5 @@
+import { PgBoss } from "pg-boss";
+import { pool } from "../db";
 import { workflowDao as defaultWorkflowDao, Workflow } from "../dao/workflow-dao";
 import { stepDao as defaultStepDao } from "../dao/step-dao";
 import { runDao as defaultRunDao } from "../dao/run-dao";
@@ -13,11 +15,41 @@ import { generatePrDescription as defaultGeneratePrDescription } from "./pr-desc
 import { settingsService as defaultSettingsService } from "../services/settings-service";
 import { logger } from "../utils/logger";
 
-const POLL_INTERVAL_MS = 5_000;
+// --- Job types ---
+
+export const JOB_TYPES = {
+  plan: "cadence.plan",
+  dev: "cadence.dev",
+  ci: "cadence.ci",
+  review: "cadence.review",
+  e2e: "cadence.e2e",
+  "e2e-verify": "cadence.e2e-verify",
+  signoff: "cadence.signoff",
+} as const;
+
+const EXPIRE_MINUTES: Record<string, number> = {
+  [JOB_TYPES.plan]: 10,
+  [JOB_TYPES.dev]: 15,
+  [JOB_TYPES.ci]: 5,
+  [JOB_TYPES.review]: 10,
+  [JOB_TYPES.e2e]: 15,
+  [JOB_TYPES["e2e-verify"]]: 10,
+  [JOB_TYPES.signoff]: 5,
+};
+
 const TERMINAL_STATUSES = ["complete", "failed", "cancelled"];
 
-let running = false;
-let pollTimer: ReturnType<typeof setTimeout> | null = null;
+// --- Job data ---
+
+export interface JobData {
+  workflowId: string;
+  iteration: number;
+  stepIds: Record<string, string>;
+  failureContext?: string;
+  e2eEvidence?: string;
+}
+
+// --- Dependencies ---
 
 export interface EngineDeps {
   workflowDao: typeof defaultWorkflowDao;
@@ -35,6 +67,8 @@ export interface EngineDeps {
   generatePrDescription: typeof defaultGeneratePrDescription;
   runE2eAgent: typeof defaultRunE2eAgent;
   runE2eVerifier: typeof defaultRunE2eVerifier;
+  getDecryptedToken: (userId: string) => Promise<string>;
+  enqueueJob: (name: string, data: JobData) => Promise<string | null>;
 }
 
 async function defaultGetPrDiff(token: string, repo: string, prNumber: number): Promise<string> {
@@ -72,633 +106,78 @@ async function defaultGetHeadSha(token: string, repo: string, branch: string): P
   return data.object.sha;
 }
 
-const defaultDeps: EngineDeps = {
-  workflowDao: defaultWorkflowDao,
-  stepDao: defaultStepDao,
-  runDao: defaultRunDao,
-  eventBus: defaultEventBus,
-  runPlannerAgent: defaultRunPlanner,
-  runDevAgent: defaultRunDevAgent,
-  createPullRequest: defaultGithubService.createPullRequest.bind(defaultGithubService),
-  pollCiStatus: defaultPollCiStatus,
-  runReviewAgent: defaultRunReviewAgent,
-  getPrDiff: defaultGetPrDiff,
-  getHeadSha: defaultGetHeadSha,
-  postPrComment: defaultGithubService.postPrComment.bind(defaultGithubService),
-  generatePrDescription: defaultGeneratePrDescription,
-  runE2eAgent: defaultRunE2eAgent,
-  runE2eVerifier: defaultRunE2eVerifier,
-};
+// --- Shared helpers ---
 
-export async function processWorkflow(
-  workflow: Workflow,
-  githubToken: string,
-  deps: EngineDeps = defaultDeps
-): Promise<void> {
-  const {
-    workflowDao,
-    stepDao,
-    runDao,
-    eventBus,
-    runPlannerAgent,
-    runDevAgent,
-    createPullRequest,
-    pollCiStatus,
-    runReviewAgent,
-    getPrDiff,
-    getHeadSha,
-  } = deps;
-
-  // Don't process terminal workflows
-  if (TERMINAL_STATUSES.includes(workflow.status)) {
-    return;
-  }
-
-  // Check iteration limit
-  if (workflow.iteration >= workflow.max_iters) {
-    await workflowDao.updateError(
-      workflow.id,
-      "Workflow failed: iteration limit reached"
-    );
-    eventBus.emit({
-      type: "workflow:completed",
-      workflowId: workflow.id,
-      data: { status: "failed", error: "Iteration limit reached" },
-    });
-    return;
-  }
-
-  // Transition to running
-  await workflowDao.updateStatus(workflow.id, "running");
-  eventBus.emit({
-    type: "workflow:updated",
-    workflowId: workflow.id,
-    data: { status: "running" },
-  });
-
-  // Create iteration steps
-  const steps = await stepDao.createIterationSteps(
-    workflow.id,
-    workflow.iteration
-  );
-
-  // Keep mutable workflow state for passing context through steps
-  let currentWorkflow = { ...workflow };
-  const failureContext: string | null = null;
-
-  // --- Plan step (iteration 0 only) ---
-  const planStep = steps.find((s) => s.type === "plan");
-  if (planStep) {
-    await stepDao.updateStatus(planStep.id, "running");
-    eventBus.emit({
-      type: "step:updated",
-      workflowId: workflow.id,
-      data: { stepId: planStep.id, type: "plan", status: "running" },
-    });
-
-    const planPrompt = `Plan task: ${workflow.task} for repo ${workflow.repo}`;
-    const planRun = await runDao.create({
-      stepId: planStep.id,
-      workflowId: workflow.id,
-      agentRole: "planner",
-      iteration: workflow.iteration,
-      prompt: planPrompt,
-    });
-
-    const planResult = await runPlannerAgent(workflow, githubToken);
-
-    await runDao.updateResult(planRun.id, {
-      response: planResult.response,
-      exitCode: planResult.exitCode,
-      durationSecs: planResult.durationSecs,
-    });
-
-    if (planResult.exitCode !== 0 || !planResult.proposal) {
-      const detail = planResult.response || "Planner agent failed";
-      await stepDao.updateStatus(planStep.id, "failed", detail);
-      eventBus.emit({
-        type: "step:updated",
-        workflowId: workflow.id,
-        data: { stepId: planStep.id, type: "plan", status: "failed" },
-      });
-      await workflowDao.updateError(
-        workflow.id,
-        `Plan step failed: ${detail.substring(0, 500)}`
-      );
-      eventBus.emit({
-        type: "workflow:completed",
-        workflowId: workflow.id,
-        data: { status: "failed" },
-      });
-      return;
-    }
-
-    // Plan succeeded
-    await stepDao.updateStatus(planStep.id, "passed", undefined);
-    eventBus.emit({
-      type: "step:updated",
-      workflowId: workflow.id,
-      data: { stepId: planStep.id, type: "plan", status: "passed" },
-    });
-    await workflowDao.updateProposal(workflow.id, planResult.proposal);
-    currentWorkflow = { ...currentWorkflow, proposal: planResult.proposal };
-  }
-
-  // --- Dev step ---
-  const devStep = steps.find((s) => s.type === "dev");
-  if (!devStep) {
-    await workflowDao.updateError(workflow.id, "No dev step created");
-    return;
-  }
-
-  await stepDao.updateStatus(devStep.id, "running");
-  eventBus.emit({
-    type: "step:updated",
-    workflowId: workflow.id,
-    data: { stepId: devStep.id, type: "dev", status: "running" },
-  });
-
-  let devPrompt = `Implement task: ${workflow.task} for repo ${workflow.repo} using proposal`;
-  if (failureContext) {
-    devPrompt += `\n\n## Previous Iteration Failure\n\n${failureContext}`;
-  }
-
-  const devRun = await runDao.create({
-    stepId: devStep.id,
-    workflowId: workflow.id,
-    agentRole: "dev",
-    iteration: workflow.iteration,
-    prompt: devPrompt,
-  });
-
-  const devResult = await runDevAgent(currentWorkflow, githubToken);
-
-  await runDao.updateResult(devRun.id, {
-    response: devResult.response,
-    exitCode: devResult.exitCode,
-    durationSecs: devResult.durationSecs,
-  });
-
-  if (devResult.exitCode !== 0) {
-    const detail = devResult.response || "Dev agent failed";
-    await stepDao.updateStatus(devStep.id, "failed", detail);
-    eventBus.emit({
-      type: "step:updated",
-      workflowId: workflow.id,
-      data: { stepId: devStep.id, type: "dev", status: "failed" },
-    });
-    await workflowDao.updateError(
-      workflow.id,
-      `Dev step failed: ${detail.substring(0, 500)}`
-    );
-    eventBus.emit({
-      type: "workflow:completed",
-      workflowId: workflow.id,
-      data: { status: "failed" },
-    });
-    return;
-  }
-
-  // Dev succeeded
-  await stepDao.updateStatus(devStep.id, "passed", undefined);
-  eventBus.emit({
-    type: "step:updated",
-    workflowId: workflow.id,
-    data: { stepId: devStep.id, type: "dev", status: "passed" },
-  });
-
-  // --- Create PR (first iteration only) ---
-  if (currentWorkflow.pr_number === null) {
-    const { title: prTitle, body: prBody } = await deps.generatePrDescription(
-      workflow.task,
-      currentWorkflow.proposal || ""
-    );
-
-    try {
-      const pr = await createPullRequest({
-        token: githubToken,
-        repo: workflow.repo,
-        head: workflow.branch,
-        title: prTitle,
-        body: prBody,
-      });
-
-      await workflowDao.updatePrNumber(workflow.id, pr.number);
-      currentWorkflow = { ...currentWorkflow, pr_number: pr.number };
-      eventBus.emit({
-        type: "workflow:updated",
-        workflowId: workflow.id,
-        data: { status: "running", pr_number: pr.number, pr_url: pr.url },
-      });
-
-      // Post proposal as first PR comment
-      await postProposalComment(
-        deps, githubToken, workflow.repo, pr.number,
-        currentWorkflow.proposal
-      );
-    } catch (error) {
-      const detail =
-        error instanceof Error ? error.message : String(error);
-      await workflowDao.updateError(
-        workflow.id,
-        `PR creation failed: ${detail.substring(0, 500)}`
-      );
-      eventBus.emit({
-        type: "workflow:completed",
-        workflowId: workflow.id,
-        data: { status: "failed" },
-      });
-      return;
-    }
-  }
-
-  // --- CI step ---
-  const ciStep = steps.find((s) => s.type === "ci");
-  if (!ciStep) {
-    await workflowDao.updateError(workflow.id, "No ci step created");
-    return;
-  }
-
-  await stepDao.updateStatus(ciStep.id, "running");
-  eventBus.emit({
-    type: "step:updated",
-    workflowId: workflow.id,
-    data: { stepId: ciStep.id, type: "ci", status: "running" },
-  });
-
-  const headSha = await getHeadSha(githubToken, workflow.repo, workflow.branch);
-  const ciResult = await pollCiStatus(workflow.repo, headSha, githubToken);
-
-  if (ciResult.status === "failed") {
-    const detail = ciResult.detail || "CI checks failed";
-    await stepDao.updateStatus(ciStep.id, "failed", detail);
-    eventBus.emit({
-      type: "step:updated",
-      workflowId: workflow.id,
-      data: { stepId: ciStep.id, type: "ci", status: "failed" },
-    });
-
-    // Trigger regression
-    return await regress(
-      workflow,
-      githubToken,
-      detail,
-      deps
-    );
-  }
-
-  // CI passed
-  await stepDao.updateStatus(ciStep.id, "passed", undefined);
-  eventBus.emit({
-    type: "step:updated",
-    workflowId: workflow.id,
-    data: { stepId: ciStep.id, type: "ci", status: "passed" },
-  });
-
-  // --- Review step ---
-  const reviewStep = steps.find((s) => s.type === "review");
-  if (!reviewStep) {
-    await workflowDao.updateError(workflow.id, "No review step created");
-    return;
-  }
-
-  await stepDao.updateStatus(reviewStep.id, "running");
-  eventBus.emit({
-    type: "step:updated",
-    workflowId: workflow.id,
-    data: { stepId: reviewStep.id, type: "review", status: "running" },
-  });
-
-  const prDiff = await getPrDiff(githubToken, workflow.repo, currentWorkflow.pr_number!);
-
-  const reviewPrompt = `Review PR #${currentWorkflow.pr_number} for task: ${workflow.task}`;
-  const reviewRun = await runDao.create({
-    stepId: reviewStep.id,
-    workflowId: workflow.id,
-    agentRole: "reviewer",
-    iteration: workflow.iteration,
-    prompt: reviewPrompt,
-  });
-
-  const reviewResult = await runReviewAgent(currentWorkflow, prDiff, githubToken);
-
-  await runDao.updateResult(reviewRun.id, {
-    response: reviewResult.verdict,
-    exitCode: reviewResult.exitCode,
-    durationSecs: reviewResult.durationSecs,
-  });
-
-  // Post review comment to PR
-  await postReviewComment(
-    deps, githubToken, workflow.repo, currentWorkflow.pr_number!,
-    reviewResult, workflow.iteration
-  );
-
-  if (!reviewResult.reviewPass) {
-    const detail = reviewResult.verdict || "Review failed";
-    await stepDao.updateStatus(reviewStep.id, "failed", detail);
-    eventBus.emit({
-      type: "step:updated",
-      workflowId: workflow.id,
-      data: { stepId: reviewStep.id, type: "review", status: "failed" },
-    });
-
-    // Trigger regression
-    return await regress(
-      workflow,
-      githubToken,
-      detail,
-      deps
-    );
-  }
-
-  // Review passed
-  await stepDao.updateStatus(reviewStep.id, "passed", undefined);
-  eventBus.emit({
-    type: "step:updated",
-    workflowId: workflow.id,
-    data: { stepId: reviewStep.id, type: "review", status: "passed" },
-  });
-
-  // --- E2E, E2E Verify, Signoff ---
-  await processE2eThroughSignoff(
-    currentWorkflow,
-    steps,
-    githubToken,
-    deps
-  );
-}
-
-async function postProposalComment(
-  deps: EngineDeps,
-  token: string,
-  repo: string,
-  prNumber: number,
-  proposal: string | null
-): Promise<void> {
-  if (!proposal) return;
-  try {
-    const header = `\uD83D\uDCCB **Proposal**`;
-    const body = `${header}\n\n${proposal}`;
-    await deps.postPrComment({ token, repo, prNumber, body });
-  } catch (error) {
-    logger.warn("Failed to post proposal comment", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-}
-
-async function postReviewComment(
-  deps: EngineDeps,
-  token: string,
-  repo: string,
-  prNumber: number,
-  reviewResult: { reviewPass: boolean; response: string },
-  iteration: number
-): Promise<void> {
-  try {
-    const icon = reviewResult.reviewPass ? "\u2705" : "\u274c";
-    const status = reviewResult.reviewPass ? "passed" : "failed";
-    const header = `${icon} **Review ${status}** (iteration ${iteration})`;
-    // Strip the JSON verdict block from the response — keep only the human-readable part
-    const summary = reviewResult.response
-      .replace(/```json[\s\S]*?```/g, "")
-      .trim();
-    const body = summary ? `${header}\n\n${summary}` : header;
-    await deps.postPrComment({ token, repo, prNumber, body });
-  } catch (error) {
-    // Non-fatal — don't fail the workflow if we can't post a comment
-    logger.warn("Failed to post review comment", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-}
-
-async function processE2eThroughSignoff(
-  workflow: Workflow,
-  steps: { id: string; type: string }[],
-  githubToken: string,
+async function failStep(
+  stepId: string,
+  stepType: string,
+  workflowId: string,
+  detail: string,
   deps: EngineDeps
 ): Promise<void> {
-  const {
-    workflowDao,
-    stepDao,
-    runDao,
-    eventBus,
-    runE2eAgent,
-    runE2eVerifier,
-  } = deps;
-
-  // --- E2E step ---
-  const e2eStep = steps.find((s) => s.type === "e2e");
-  if (!e2eStep) {
-    await workflowDao.updateError(workflow.id, "No e2e step created");
-    return;
-  }
-
-  await stepDao.updateStatus(e2eStep.id, "running");
-  eventBus.emit({
+  await deps.stepDao.updateStatus(stepId, "failed", detail);
+  deps.eventBus.emit({
     type: "step:updated",
-    workflowId: workflow.id,
-    data: { stepId: e2eStep.id, type: "e2e", status: "running" },
+    workflowId,
+    data: { stepId, type: stepType, status: "failed" },
   });
+}
 
-  const e2ePrompt = `Run E2E tests for task: ${workflow.task} on repo ${workflow.repo}`;
-  const e2eRun = await runDao.create({
-    stepId: e2eStep.id,
-    workflowId: workflow.id,
-    agentRole: "e2e",
-    iteration: workflow.iteration,
-    prompt: e2ePrompt,
-  });
-
-  const e2eResult = await runE2eAgent(workflow, githubToken);
-
-  await runDao.updateResult(e2eRun.id, {
-    response: e2eResult.response,
-    exitCode: e2eResult.exitCode,
-    durationSecs: e2eResult.durationSecs,
-  });
-
-  // Post E2E evidence as PR comment
-  await postE2eComment(
-    deps, githubToken, workflow.repo, workflow.pr_number!,
-    e2eResult, workflow.iteration
-  );
-
-  if (!e2eResult.e2ePass) {
-    const detail = e2eResult.response || "E2E tests failed";
-    await stepDao.updateStatus(e2eStep.id, "failed", detail);
-    eventBus.emit({
-      type: "step:updated",
-      workflowId: workflow.id,
-      data: { stepId: e2eStep.id, type: "e2e", status: "failed" },
-    });
-
-    return await regress(workflow, githubToken, detail, deps);
-  }
-
-  // E2E passed
-  await stepDao.updateStatus(e2eStep.id, "passed", undefined);
-  eventBus.emit({
+async function passStep(
+  stepId: string,
+  stepType: string,
+  workflowId: string,
+  deps: EngineDeps
+): Promise<void> {
+  await deps.stepDao.updateStatus(stepId, "passed", undefined);
+  deps.eventBus.emit({
     type: "step:updated",
-    workflowId: workflow.id,
-    data: { stepId: e2eStep.id, type: "e2e", status: "passed" },
+    workflowId,
+    data: { stepId, type: stepType, status: "passed" },
   });
+}
 
-  // --- E2E Verify step ---
-  const e2eVerifyStep = steps.find((s) => s.type === "e2e_verify");
-  if (!e2eVerifyStep) {
-    await workflowDao.updateError(workflow.id, "No e2e_verify step created");
-    return;
-  }
-
-  await stepDao.updateStatus(e2eVerifyStep.id, "running");
-  eventBus.emit({
+async function startStep(
+  stepId: string,
+  stepType: string,
+  workflowId: string,
+  deps: EngineDeps
+): Promise<void> {
+  await deps.stepDao.updateStatus(stepId, "running");
+  deps.eventBus.emit({
     type: "step:updated",
-    workflowId: workflow.id,
-    data: { stepId: e2eVerifyStep.id, type: "e2e_verify", status: "running" },
+    workflowId,
+    data: { stepId, type: stepType, status: "running" },
   });
+}
 
-  const verifyPrompt = `Verify E2E evidence for task: ${workflow.task}`;
-  const verifyRun = await runDao.create({
-    stepId: e2eVerifyStep.id,
-    workflowId: workflow.id,
-    agentRole: "e2e_verifier",
-    iteration: workflow.iteration,
-    prompt: verifyPrompt,
-  });
-
-  const verifyResult = await runE2eVerifier(workflow, e2eResult.evidence, githubToken);
-
-  await runDao.updateResult(verifyRun.id, {
-    response: verifyResult.verdict,
-    exitCode: verifyResult.exitCode,
-    durationSecs: verifyResult.durationSecs,
-  });
-
-  // Post E2E verify assessment as PR comment
-  await postE2eVerifyComment(
-    deps, githubToken, workflow.repo, workflow.pr_number!,
-    verifyResult, workflow.iteration
-  );
-
-  if (!verifyResult.e2ePass) {
-    const detail = verifyResult.verdict || "E2E verification failed";
-    await stepDao.updateStatus(e2eVerifyStep.id, "failed", detail);
-    eventBus.emit({
-      type: "step:updated",
-      workflowId: workflow.id,
-      data: { stepId: e2eVerifyStep.id, type: "e2e_verify", status: "failed" },
-    });
-
-    return await regress(workflow, githubToken, detail, deps);
-  }
-
-  // E2E Verify passed
-  await stepDao.updateStatus(e2eVerifyStep.id, "passed", undefined);
-  eventBus.emit({
-    type: "step:updated",
-    workflowId: workflow.id,
-    data: { stepId: e2eVerifyStep.id, type: "e2e_verify", status: "passed" },
-  });
-
-  // --- Signoff step (auto-pass) ---
-  const signoffStep = steps.find((s) => s.type === "signoff");
-  if (!signoffStep) {
-    await workflowDao.updateError(workflow.id, "No signoff step created");
-    return;
-  }
-
-  await stepDao.updateStatus(signoffStep.id, "passed", undefined);
-  eventBus.emit({
-    type: "step:updated",
-    workflowId: workflow.id,
-    data: { stepId: signoffStep.id, type: "signoff", status: "passed" },
-  });
-
-  // --- Workflow complete ---
-  await workflowDao.updateStatus(workflow.id, "complete");
-  eventBus.emit({
+async function failWorkflow(
+  workflowId: string,
+  error: string,
+  deps: EngineDeps
+): Promise<void> {
+  await deps.workflowDao.updateError(workflowId, error);
+  deps.eventBus.emit({
     type: "workflow:completed",
-    workflowId: workflow.id,
-    data: { status: "complete", pr_number: workflow.pr_number },
+    workflowId,
+    data: { status: "failed", error },
   });
-}
-
-async function postE2eComment(
-  deps: EngineDeps,
-  token: string,
-  repo: string,
-  prNumber: number,
-  e2eResult: { response: string },
-  iteration: number
-): Promise<void> {
-  try {
-    const header = `\uD83E\uDDEA **E2E Evidence** (iteration ${iteration})`;
-    const summary = e2eResult.response
-      .replace(/```json[\s\S]*?```/g, "")
-      .trim();
-    const body = summary ? `${header}\n\n${summary}` : header;
-    await deps.postPrComment({ token, repo, prNumber, body });
-  } catch (error) {
-    logger.warn("Failed to post E2E comment", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-}
-
-async function postE2eVerifyComment(
-  deps: EngineDeps,
-  token: string,
-  repo: string,
-  prNumber: number,
-  verifyResult: { e2ePass: boolean; response: string },
-  iteration: number
-): Promise<void> {
-  try {
-    const icon = verifyResult.e2ePass ? "\u2705" : "\u274c";
-    const status = verifyResult.e2ePass ? "passed" : "failed";
-    const header = `${icon} **E2E Verification ${status}** (iteration ${iteration})`;
-    const summary = verifyResult.response
-      .replace(/```json[\s\S]*?```/g, "")
-      .trim();
-    const body = summary ? `${header}\n\n${summary}` : header;
-    await deps.postPrComment({ token, repo, prNumber, body });
-  } catch (error) {
-    logger.warn("Failed to post E2E verify comment", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
 }
 
 async function regress(
   workflow: Workflow,
-  githubToken: string,
   failureDetail: string,
   deps: EngineDeps
 ): Promise<void> {
-  const { workflowDao, eventBus } = deps;
-
   const nextIteration = workflow.iteration + 1;
 
-  // Check iteration limit before regressing
   if (nextIteration >= workflow.max_iters) {
-    await workflowDao.updateError(
-      workflow.id,
-      "Workflow failed: iteration limit reached"
-    );
-    eventBus.emit({
-      type: "workflow:completed",
-      workflowId: workflow.id,
-      data: { status: "failed", error: "Iteration limit reached" },
-    });
+    await failWorkflow(workflow.id, "Workflow failed: iteration limit reached", deps);
     return;
   }
 
-  // Increment iteration
-  await workflowDao.updateIteration(workflow.id, nextIteration);
-  eventBus.emit({
+  await deps.workflowDao.updateIteration(workflow.id, nextIteration);
+  deps.eventBus.emit({
     type: "workflow:updated",
     workflowId: workflow.id,
     data: {
@@ -708,86 +187,203 @@ async function regress(
     },
   });
 
-  // Process the next iteration recursively
-  const regressionWorkflow: Workflow = {
-    ...workflow,
-    iteration: nextIteration,
-    pr_number: workflow.pr_number,
-    status: "running",
-  };
-
-  await processRegressionIteration(
-    regressionWorkflow,
-    githubToken,
-    failureDetail,
-    deps
-  );
+  await startIteration(workflow.id, nextIteration, failureDetail, deps);
 }
 
-async function processRegressionIteration(
-  workflow: Workflow,
-  githubToken: string,
-  failureContext: string,
+export async function startIteration(
+  workflowId: string,
+  iteration: number,
+  failureContext: string | undefined,
   deps: EngineDeps
 ): Promise<void> {
-  const {
-    workflowDao,
-    stepDao,
-    runDao,
-    eventBus,
-    runDevAgent,
-    pollCiStatus,
-    runReviewAgent,
-    getPrDiff,
-    getHeadSha,
-  } = deps;
+  const steps = await deps.stepDao.createIterationSteps(workflowId, iteration);
+  const stepIds: Record<string, string> = {};
+  for (const s of steps) {
+    stepIds[s.type] = s.id;
+  }
 
-  // Check iteration limit
-  if (workflow.iteration >= workflow.max_iters) {
-    await workflowDao.updateError(
-      workflow.id,
-      "Workflow failed: iteration limit reached"
-    );
-    eventBus.emit({
-      type: "workflow:completed",
-      workflowId: workflow.id,
-      data: { status: "failed", error: "Iteration limit reached" },
+  const firstJobType = iteration === 0 ? JOB_TYPES.plan : JOB_TYPES.dev;
+  await deps.enqueueJob(firstJobType, {
+    workflowId,
+    iteration,
+    stepIds,
+    failureContext,
+  });
+}
+
+function postProposalComment(
+  deps: EngineDeps,
+  token: string,
+  repo: string,
+  prNumber: number,
+  proposal: string | null
+): Promise<void> {
+  if (!proposal) return Promise.resolve();
+  const header = `\u{1F4CB} **Proposal**`;
+  const body = `${header}\n\n${proposal}`;
+  return deps.postPrComment({ token, repo, prNumber, body }).catch((error) => {
+    logger.warn("Failed to post proposal comment", {
+      error: error instanceof Error ? error.message : String(error),
     });
+  });
+}
+
+function postReviewComment(
+  deps: EngineDeps,
+  token: string,
+  repo: string,
+  prNumber: number,
+  reviewResult: { reviewPass: boolean; response: string },
+  iteration: number
+): Promise<void> {
+  const icon = reviewResult.reviewPass ? "\u2705" : "\u274c";
+  const status = reviewResult.reviewPass ? "passed" : "failed";
+  const header = `${icon} **Review ${status}** (iteration ${iteration})`;
+  const summary = reviewResult.response
+    .replace(/```json[\s\S]*?```/g, "")
+    .trim();
+  const body = summary ? `${header}\n\n${summary}` : header;
+  return deps.postPrComment({ token, repo, prNumber, body }).catch((error) => {
+    logger.warn("Failed to post review comment", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+}
+
+function postE2eComment(
+  deps: EngineDeps,
+  token: string,
+  repo: string,
+  prNumber: number,
+  e2eResult: { response: string },
+  iteration: number
+): Promise<void> {
+  const header = `\u{1F9EA} **E2E Evidence** (iteration ${iteration})`;
+  const summary = e2eResult.response
+    .replace(/```json[\s\S]*?```/g, "")
+    .trim();
+  const body = summary ? `${header}\n\n${summary}` : header;
+  return deps.postPrComment({ token, repo, prNumber, body }).catch((error) => {
+    logger.warn("Failed to post E2E comment", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+}
+
+function postE2eVerifyComment(
+  deps: EngineDeps,
+  token: string,
+  repo: string,
+  prNumber: number,
+  verifyResult: { e2ePass: boolean; response: string },
+  iteration: number
+): Promise<void> {
+  const icon = verifyResult.e2ePass ? "\u2705" : "\u274c";
+  const status = verifyResult.e2ePass ? "passed" : "failed";
+  const header = `${icon} **E2E Verification ${status}** (iteration ${iteration})`;
+  const summary = verifyResult.response
+    .replace(/```json[\s\S]*?```/g, "")
+    .trim();
+  const body = summary ? `${header}\n\n${summary}` : header;
+  return deps.postPrComment({ token, repo, prNumber, body }).catch((error) => {
+    logger.warn("Failed to post E2E verify comment", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+}
+
+// --- Step handlers ---
+
+export async function handlePlan(data: JobData, deps: EngineDeps): Promise<void> {
+  const { workflowId, stepIds } = data;
+  const stepId = stepIds.plan;
+
+  const workflow = await deps.workflowDao.findById(workflowId);
+  if (!workflow || TERMINAL_STATUSES.includes(workflow.status)) return;
+
+  if (workflow.iteration >= workflow.max_iters) {
+    await failWorkflow(workflowId, "Workflow failed: iteration limit reached", deps);
     return;
   }
 
-  // Create iteration steps (no plan step for iteration > 0)
-  const steps = await stepDao.createIterationSteps(
-    workflow.id,
-    workflow.iteration
-  );
-
-  // --- Dev step with failure context ---
-  const devStep = steps.find((s) => s.type === "dev");
-  if (!devStep) {
-    await workflowDao.updateError(workflow.id, "No dev step created");
-    return;
-  }
-
-  await stepDao.updateStatus(devStep.id, "running");
-  eventBus.emit({
-    type: "step:updated",
-    workflowId: workflow.id,
-    data: { stepId: devStep.id, type: "dev", status: "running" },
+  await deps.workflowDao.updateStatus(workflowId, "running");
+  deps.eventBus.emit({
+    type: "workflow:updated",
+    workflowId,
+    data: { status: "running" },
   });
 
-  const devPrompt = `Implement task: ${workflow.task} for repo ${workflow.repo} using proposal\n\n## Previous Iteration Failure\n\n${failureContext}`;
-  const devRun = await runDao.create({
-    stepId: devStep.id,
-    workflowId: workflow.id,
-    agentRole: "dev",
+  const githubToken = await deps.getDecryptedToken(workflow.created_by);
+
+  await startStep(stepId, "plan", workflowId, deps);
+
+  const planPrompt = `Plan task: ${workflow.task} for repo ${workflow.repo}`;
+  const planRun = await deps.runDao.create({
+    stepId,
+    workflowId,
+    agentRole: "planner",
     iteration: workflow.iteration,
+    prompt: planPrompt,
+  });
+
+  const planResult = await deps.runPlannerAgent(workflow, githubToken);
+
+  await deps.runDao.updateResult(planRun.id, {
+    response: planResult.response,
+    exitCode: planResult.exitCode,
+    durationSecs: planResult.durationSecs,
+  });
+
+  if (planResult.exitCode !== 0 || !planResult.proposal) {
+    const detail = planResult.response || "Planner agent failed";
+    await failStep(stepId, "plan", workflowId, detail, deps);
+    await failWorkflow(workflowId, `Plan step failed: ${detail.substring(0, 500)}`, deps);
+    return;
+  }
+
+  await passStep(stepId, "plan", workflowId, deps);
+  await deps.workflowDao.updateProposal(workflowId, planResult.proposal);
+
+  await deps.enqueueJob(JOB_TYPES.dev, { ...data });
+}
+
+export async function handleDev(data: JobData, deps: EngineDeps): Promise<void> {
+  const { workflowId, stepIds, failureContext } = data;
+  const stepId = stepIds.dev;
+
+  const workflow = await deps.workflowDao.findById(workflowId);
+  if (!workflow || TERMINAL_STATUSES.includes(workflow.status)) return;
+
+  // For regression iterations (iteration > 0), ensure workflow is running
+  if (workflow.status === "pending") {
+    await deps.workflowDao.updateStatus(workflowId, "running");
+    deps.eventBus.emit({
+      type: "workflow:updated",
+      workflowId,
+      data: { status: "running" },
+    });
+  }
+
+  const githubToken = await deps.getDecryptedToken(workflow.created_by);
+
+  await startStep(stepId, "dev", workflowId, deps);
+
+  let devPrompt = `Implement task: ${workflow.task} for repo ${workflow.repo} using proposal`;
+  if (failureContext) {
+    devPrompt += `\n\n## Previous Iteration Failure\n\n${failureContext}`;
+  }
+
+  const devRun = await deps.runDao.create({
+    stepId,
+    workflowId,
+    agentRole: "dev",
+    iteration: data.iteration,
     prompt: devPrompt,
   });
 
-  const devResult = await runDevAgent(workflow, githubToken);
+  const devResult = await deps.runDevAgent(workflow, githubToken);
 
-  await runDao.updateResult(devRun.id, {
+  await deps.runDao.updateResult(devRun.id, {
     response: devResult.response,
     exitCode: devResult.exitCode,
     durationSecs: devResult.durationSecs,
@@ -795,175 +391,329 @@ async function processRegressionIteration(
 
   if (devResult.exitCode !== 0) {
     const detail = devResult.response || "Dev agent failed";
-    await stepDao.updateStatus(devStep.id, "failed", detail);
-    eventBus.emit({
-      type: "step:updated",
-      workflowId: workflow.id,
-      data: { stepId: devStep.id, type: "dev", status: "failed" },
-    });
-    await workflowDao.updateError(
-      workflow.id,
-      `Dev step failed: ${detail.substring(0, 500)}`
+    await failStep(stepId, "dev", workflowId, detail, deps);
+    await failWorkflow(workflowId, `Dev step failed: ${detail.substring(0, 500)}`, deps);
+    return;
+  }
+
+  await passStep(stepId, "dev", workflowId, deps);
+
+  // Create PR on first iteration
+  if (workflow.pr_number === null) {
+    const { title: prTitle, body: prBody } = await deps.generatePrDescription(
+      workflow.task,
+      workflow.proposal || ""
     );
-    eventBus.emit({
-      type: "workflow:completed",
-      workflowId: workflow.id,
-      data: { status: "failed" },
-    });
-    return;
+
+    try {
+      const pr = await deps.createPullRequest({
+        token: githubToken,
+        repo: workflow.repo,
+        head: workflow.branch,
+        title: prTitle,
+        body: prBody,
+      });
+
+      await deps.workflowDao.updatePrNumber(workflowId, pr.number);
+      deps.eventBus.emit({
+        type: "workflow:updated",
+        workflowId,
+        data: { status: "running", pr_number: pr.number, pr_url: pr.url },
+      });
+
+      await postProposalComment(deps, githubToken, workflow.repo, pr.number, workflow.proposal);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      await failWorkflow(workflowId, `PR creation failed: ${detail.substring(0, 500)}`, deps);
+      return;
+    }
   }
 
-  // Dev succeeded
-  await stepDao.updateStatus(devStep.id, "passed", undefined);
-  eventBus.emit({
-    type: "step:updated",
-    workflowId: workflow.id,
-    data: { stepId: devStep.id, type: "dev", status: "passed" },
-  });
+  await deps.enqueueJob(JOB_TYPES.ci, { ...data });
+}
 
-  // --- CI step ---
-  const ciStep = steps.find((s) => s.type === "ci");
-  if (!ciStep) {
-    await workflowDao.updateError(workflow.id, "No ci step created");
-    return;
-  }
+export async function handleCi(data: JobData, deps: EngineDeps): Promise<void> {
+  const { workflowId, stepIds } = data;
+  const stepId = stepIds.ci;
 
-  await stepDao.updateStatus(ciStep.id, "running");
-  eventBus.emit({
-    type: "step:updated",
-    workflowId: workflow.id,
-    data: { stepId: ciStep.id, type: "ci", status: "running" },
-  });
+  const workflow = await deps.workflowDao.findById(workflowId);
+  if (!workflow || TERMINAL_STATUSES.includes(workflow.status)) return;
 
-  const headSha = await getHeadSha(githubToken, workflow.repo, workflow.branch);
-  const ciResult = await pollCiStatus(workflow.repo, headSha, githubToken);
+  const githubToken = await deps.getDecryptedToken(workflow.created_by);
+
+  await startStep(stepId, "ci", workflowId, deps);
+
+  const headSha = await deps.getHeadSha(githubToken, workflow.repo, workflow.branch);
+  const ciResult = await deps.pollCiStatus(workflow.repo, headSha, githubToken);
 
   if (ciResult.status === "failed") {
     const detail = ciResult.detail || "CI checks failed";
-    await stepDao.updateStatus(ciStep.id, "failed", detail);
-    eventBus.emit({
-      type: "step:updated",
-      workflowId: workflow.id,
-      data: { stepId: ciStep.id, type: "ci", status: "failed" },
-    });
-
-    return await regress(workflow, githubToken, detail, deps);
-  }
-
-  // CI passed
-  await stepDao.updateStatus(ciStep.id, "passed", undefined);
-  eventBus.emit({
-    type: "step:updated",
-    workflowId: workflow.id,
-    data: { stepId: ciStep.id, type: "ci", status: "passed" },
-  });
-
-  // --- Review step ---
-  const reviewStep = steps.find((s) => s.type === "review");
-  if (!reviewStep) {
-    await workflowDao.updateError(workflow.id, "No review step created");
+    await failStep(stepId, "ci", workflowId, detail, deps);
+    await regress(workflow, detail, deps);
     return;
   }
 
-  await stepDao.updateStatus(reviewStep.id, "running");
-  eventBus.emit({
-    type: "step:updated",
-    workflowId: workflow.id,
-    data: { stepId: reviewStep.id, type: "review", status: "running" },
-  });
+  await passStep(stepId, "ci", workflowId, deps);
+  await deps.enqueueJob(JOB_TYPES.review, { ...data });
+}
 
-  const prDiff = await getPrDiff(githubToken, workflow.repo, workflow.pr_number!);
+export async function handleReview(data: JobData, deps: EngineDeps): Promise<void> {
+  const { workflowId, stepIds } = data;
+  const stepId = stepIds.review;
+
+  const workflow = await deps.workflowDao.findById(workflowId);
+  if (!workflow || TERMINAL_STATUSES.includes(workflow.status)) return;
+
+  const githubToken = await deps.getDecryptedToken(workflow.created_by);
+
+  await startStep(stepId, "review", workflowId, deps);
+
+  const prDiff = await deps.getPrDiff(githubToken, workflow.repo, workflow.pr_number!);
 
   const reviewPrompt = `Review PR #${workflow.pr_number} for task: ${workflow.task}`;
-  const reviewRun = await runDao.create({
-    stepId: reviewStep.id,
-    workflowId: workflow.id,
+  const reviewRun = await deps.runDao.create({
+    stepId,
+    workflowId,
     agentRole: "reviewer",
-    iteration: workflow.iteration,
+    iteration: data.iteration,
     prompt: reviewPrompt,
   });
 
-  const reviewResult = await runReviewAgent(workflow, prDiff, githubToken);
+  const reviewResult = await deps.runReviewAgent(workflow, prDiff, githubToken);
 
-  await runDao.updateResult(reviewRun.id, {
+  await deps.runDao.updateResult(reviewRun.id, {
     response: reviewResult.verdict,
     exitCode: reviewResult.exitCode,
     durationSecs: reviewResult.durationSecs,
   });
 
-  // Post review comment to PR
   await postReviewComment(
     deps, githubToken, workflow.repo, workflow.pr_number!,
-    reviewResult, workflow.iteration
+    reviewResult, data.iteration
   );
 
   if (!reviewResult.reviewPass) {
     const detail = reviewResult.verdict || "Review failed";
-    await stepDao.updateStatus(reviewStep.id, "failed", detail);
-    eventBus.emit({
-      type: "step:updated",
-      workflowId: workflow.id,
-      data: { stepId: reviewStep.id, type: "review", status: "failed" },
-    });
-
-    return await regress(workflow, githubToken, detail, deps);
+    await failStep(stepId, "review", workflowId, detail, deps);
+    await regress(workflow, detail, deps);
+    return;
   }
 
-  // Review passed
-  await stepDao.updateStatus(reviewStep.id, "passed", undefined);
-  eventBus.emit({
-    type: "step:updated",
-    workflowId: workflow.id,
-    data: { stepId: reviewStep.id, type: "review", status: "passed" },
+  await passStep(stepId, "review", workflowId, deps);
+  await deps.enqueueJob(JOB_TYPES.e2e, { ...data });
+}
+
+export async function handleE2e(data: JobData, deps: EngineDeps): Promise<void> {
+  const { workflowId, stepIds } = data;
+  const stepId = stepIds.e2e;
+
+  const workflow = await deps.workflowDao.findById(workflowId);
+  if (!workflow || TERMINAL_STATUSES.includes(workflow.status)) return;
+
+  const githubToken = await deps.getDecryptedToken(workflow.created_by);
+
+  await startStep(stepId, "e2e", workflowId, deps);
+
+  const e2ePrompt = `Run E2E tests for task: ${workflow.task} on repo ${workflow.repo}`;
+  const e2eRun = await deps.runDao.create({
+    stepId,
+    workflowId,
+    agentRole: "e2e",
+    iteration: data.iteration,
+    prompt: e2ePrompt,
   });
 
-  // --- E2E, E2E Verify, Signoff ---
-  await processE2eThroughSignoff(
-    workflow,
-    steps,
-    githubToken,
-    deps
+  const e2eResult = await deps.runE2eAgent(workflow, githubToken);
+
+  await deps.runDao.updateResult(e2eRun.id, {
+    response: e2eResult.response,
+    exitCode: e2eResult.exitCode,
+    durationSecs: e2eResult.durationSecs,
+  });
+
+  await postE2eComment(
+    deps, githubToken, workflow.repo, workflow.pr_number!,
+    e2eResult, data.iteration
   );
-}
 
-export async function poll(): Promise<void> {
-  try {
-    const workflow = await defaultWorkflowDao.findPending();
-    if (workflow) {
-      logger.info("Processing workflow", { workflowId: workflow.id });
-      const githubToken = await defaultSettingsService.getDecryptedToken(
-        workflow.created_by
-      );
-      await processWorkflow(workflow, githubToken);
-    }
-  } catch (error) {
-    logger.error("Engine poll error", {
-      error: error instanceof Error ? error.message : String(error),
-    });
+  if (!e2eResult.e2ePass) {
+    const detail = e2eResult.response || "E2E tests failed";
+    await failStep(stepId, "e2e", workflowId, detail, deps);
+    await regress(workflow, detail, deps);
+    return;
   }
+
+  await passStep(stepId, "e2e", workflowId, deps);
+  await deps.enqueueJob(JOB_TYPES["e2e-verify"], {
+    ...data,
+    e2eEvidence: e2eResult.evidence,
+  });
 }
 
-export function startEngine(): void {
-  if (running) return;
-  running = true;
-  logger.info("Workflow engine started");
+export async function handleE2eVerify(data: JobData, deps: EngineDeps): Promise<void> {
+  const { workflowId, stepIds } = data;
+  const stepId = stepIds.e2e_verify;
 
-  const tick = async () => {
-    if (!running) return;
-    await poll();
-    if (running) {
-      pollTimer = setTimeout(tick, POLL_INTERVAL_MS);
-    }
+  const workflow = await deps.workflowDao.findById(workflowId);
+  if (!workflow || TERMINAL_STATUSES.includes(workflow.status)) return;
+
+  const githubToken = await deps.getDecryptedToken(workflow.created_by);
+
+  await startStep(stepId, "e2e_verify", workflowId, deps);
+
+  const verifyPrompt = `Verify E2E evidence for task: ${workflow.task}`;
+  const verifyRun = await deps.runDao.create({
+    stepId,
+    workflowId,
+    agentRole: "e2e_verifier",
+    iteration: data.iteration,
+    prompt: verifyPrompt,
+  });
+
+  const verifyResult = await deps.runE2eVerifier(workflow, data.e2eEvidence || "", githubToken);
+
+  await deps.runDao.updateResult(verifyRun.id, {
+    response: verifyResult.verdict,
+    exitCode: verifyResult.exitCode,
+    durationSecs: verifyResult.durationSecs,
+  });
+
+  await postE2eVerifyComment(
+    deps, githubToken, workflow.repo, workflow.pr_number!,
+    verifyResult, data.iteration
+  );
+
+  if (!verifyResult.e2ePass) {
+    const detail = verifyResult.verdict || "E2E verification failed";
+    await failStep(stepId, "e2e_verify", workflowId, detail, deps);
+    await regress(workflow, detail, deps);
+    return;
+  }
+
+  await passStep(stepId, "e2e_verify", workflowId, deps);
+  await deps.enqueueJob(JOB_TYPES.signoff, { ...data });
+}
+
+export async function handleSignoff(data: JobData, deps: EngineDeps): Promise<void> {
+  const { workflowId, stepIds } = data;
+  const stepId = stepIds.signoff;
+
+  const workflow = await deps.workflowDao.findById(workflowId);
+  if (!workflow || TERMINAL_STATUSES.includes(workflow.status)) return;
+
+  await passStep(stepId, "signoff", workflowId, deps);
+
+  await deps.workflowDao.updateStatus(workflowId, "complete");
+  deps.eventBus.emit({
+    type: "workflow:completed",
+    workflowId,
+    data: { status: "complete", pr_number: workflow.pr_number },
+  });
+}
+
+// --- Engine factory ---
+
+const HANDLERS: Record<string, (data: JobData, deps: EngineDeps) => Promise<void>> = {
+  [JOB_TYPES.plan]: handlePlan,
+  [JOB_TYPES.dev]: handleDev,
+  [JOB_TYPES.ci]: handleCi,
+  [JOB_TYPES.review]: handleReview,
+  [JOB_TYPES.e2e]: handleE2e,
+  [JOB_TYPES["e2e-verify"]]: handleE2eVerify,
+  [JOB_TYPES.signoff]: handleSignoff,
+};
+
+export function createEngine(connectionString: string, overrideDeps?: Partial<EngineDeps>) {
+  const boss = new PgBoss(connectionString);
+
+  const enqueueJob = async (name: string, data: JobData): Promise<string | null> => {
+    return boss.send(name, data, {
+      expireInMinutes: EXPIRE_MINUTES[name] ?? 10,
+      retryLimit: 0,
+    });
   };
 
-  tick();
-}
+  const deps: EngineDeps = {
+    workflowDao: defaultWorkflowDao,
+    stepDao: defaultStepDao,
+    runDao: defaultRunDao,
+    eventBus: defaultEventBus,
+    runPlannerAgent: defaultRunPlanner,
+    runDevAgent: defaultRunDevAgent,
+    createPullRequest: defaultGithubService.createPullRequest.bind(defaultGithubService),
+    pollCiStatus: defaultPollCiStatus,
+    runReviewAgent: defaultRunReviewAgent,
+    getPrDiff: defaultGetPrDiff,
+    getHeadSha: defaultGetHeadSha,
+    postPrComment: defaultGithubService.postPrComment.bind(defaultGithubService),
+    generatePrDescription: defaultGeneratePrDescription,
+    runE2eAgent: defaultRunE2eAgent,
+    runE2eVerifier: defaultRunE2eVerifier,
+    getDecryptedToken: defaultSettingsService.getDecryptedToken.bind(defaultSettingsService),
+    enqueueJob,
+    ...overrideDeps,
+  };
 
-export function stopEngine(): void {
-  running = false;
-  if (pollTimer) {
-    clearTimeout(pollTimer);
-    pollTimer = null;
-  }
-  logger.info("Workflow engine stopped");
+  return {
+    async start(): Promise<void> {
+      await boss.start();
+      logger.info("pg-boss started, registering workflow handlers");
+
+      for (const jobType of Object.keys(HANDLERS)) {
+        await boss.createQueue(jobType);
+      }
+
+      for (const [jobType, handler] of Object.entries(HANDLERS)) {
+        await boss.work(jobType, async (jobs) => {
+          const job = (jobs as unknown as { id: string; data: JobData }[])[0];
+          logger.info("Processing job", { jobType, jobId: job.id, workflowId: job.data.workflowId });
+          try {
+            await handler(job.data, deps);
+          } catch (error) {
+            logger.error("Job handler error", {
+              jobType,
+              jobId: job.id,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            // Update step status to failed if possible
+            const stepType = jobType.replace("cadence.", "").replace("-", "_");
+            const stepId = job.data.stepIds[stepType];
+            if (stepId) {
+              const detail = error instanceof Error ? error.message : String(error);
+              await failStep(stepId, stepType, job.data.workflowId, detail, deps).catch(() => {});
+            }
+            throw error;
+          }
+        });
+      }
+
+      logger.info("Workflow engine started (pg-boss)");
+    },
+
+    async stop(): Promise<void> {
+      await boss.stop();
+      logger.info("Workflow engine stopped");
+    },
+
+    async enqueueWorkflow(workflowId: string, iteration: number): Promise<void> {
+      await startIteration(workflowId, iteration, undefined, deps);
+    },
+
+    async cancelWorkflowJobs(workflowId: string): Promise<void> {
+      // Query pg-boss job table for created/active jobs belonging to this workflow
+      const result = await pool.query<{ id: string; name: string }>(
+        `SELECT id, name FROM pgboss.job
+         WHERE name LIKE 'cadence.%'
+           AND state IN ('created', 'active')
+           AND data->>'workflowId' = $1`,
+        [workflowId]
+      );
+      for (const row of result.rows) {
+        await boss.cancel(row.name, row.id);
+      }
+    },
+
+    boss,
+    deps,
+  };
 }
