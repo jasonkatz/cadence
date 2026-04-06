@@ -290,6 +290,12 @@ export async function processWorkflow(
         workflowId: workflow.id,
         data: { status: "running", pr_number: pr.number, pr_url: pr.url },
       });
+
+      // Post proposal as first PR comment
+      await postProposalComment(
+        deps, githubToken, workflow.repo, pr.number,
+        currentWorkflow.proposal
+      );
     } catch (error) {
       const detail =
         error instanceof Error ? error.message : String(error);
@@ -421,6 +427,25 @@ export async function processWorkflow(
     githubToken,
     deps
   );
+}
+
+async function postProposalComment(
+  deps: EngineDeps,
+  token: string,
+  repo: string,
+  prNumber: number,
+  proposal: string | null
+): Promise<void> {
+  if (!proposal) return;
+  try {
+    const header = `\uD83D\uDCCB **Proposal**`;
+    const body = `${header}\n\n${proposal}`;
+    await deps.postPrComment({ token, repo, prNumber, body });
+  } catch (error) {
+    logger.warn("Failed to post proposal comment", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 async function postReviewComment(

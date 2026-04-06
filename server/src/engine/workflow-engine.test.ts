@@ -910,12 +910,14 @@ describe("workflow engine", () => {
 
       await processWorkflow(wf, TEST_TOKEN, deps);
 
-      // Review comment + E2E evidence comment + E2E verify comment
-      expect(mocks.postPrComment).toHaveBeenCalledTimes(3);
-      const args = mocks.postPrComment.mock.calls[0][0];
-      expect(args.repo).toBe("acme/webapp");
-      expect(args.prNumber).toBe(42);
-      expect(args.body).toContain("Review passed");
+      // Proposal + review + E2E evidence + E2E verify
+      expect(mocks.postPrComment).toHaveBeenCalledTimes(4);
+      const proposalArgs = mocks.postPrComment.mock.calls[0][0];
+      expect(proposalArgs.body).toContain("Proposal");
+      const reviewArgs = mocks.postPrComment.mock.calls[1][0];
+      expect(reviewArgs.repo).toBe("acme/webapp");
+      expect(reviewArgs.prNumber).toBe(42);
+      expect(reviewArgs.body).toContain("Review passed");
     });
 
     it("should post a PR comment after review fails (before regression)", async () => {
@@ -945,10 +947,12 @@ describe("workflow engine", () => {
 
       await processWorkflow(wf, TEST_TOKEN, deps);
 
-      // review fail + review pass + e2e evidence + e2e verify = 4
-      expect(mocks.postPrComment).toHaveBeenCalledTimes(4);
+      // proposal + review fail + review pass + e2e evidence + e2e verify = 5
+      expect(mocks.postPrComment).toHaveBeenCalledTimes(5);
       const firstArgs = mocks.postPrComment.mock.calls[0][0];
-      expect(firstArgs.body).toContain("Review failed");
+      expect(firstArgs.body).toContain("Proposal");
+      const secondArgs = mocks.postPrComment.mock.calls[1][0];
+      expect(secondArgs.body).toContain("Review failed");
     });
 
     it("should not fail workflow if PR comment fails to post", async () => {
@@ -988,23 +992,24 @@ describe("workflow engine", () => {
       expect(e2eCreateArg.agentRole).toBe("e2e");
     });
 
-    it("should post 3 PR comments: review, e2e evidence, e2e verification", async () => {
+    it("should post 4 PR comments: proposal, review, e2e evidence, e2e verification", async () => {
       const { deps, mocks } = makeDeps();
       const wf = makeWorkflow();
 
       await processWorkflow(wf, TEST_TOKEN, deps);
 
-      // 3 comments on happy path: review + e2e evidence + e2e verify
-      expect(mocks.postPrComment).toHaveBeenCalledTimes(3);
+      // 4 comments on happy path: proposal + review + e2e evidence + e2e verify
+      expect(mocks.postPrComment).toHaveBeenCalledTimes(4);
 
       const bodies = mocks.postPrComment.mock.calls.map(
         (c: unknown[]) => (c[0] as Record<string, unknown>).body as string
       );
-      expect(bodies[0]).toContain("Review");
-      expect(bodies[1]).toContain("E2E Evidence");
-      expect(bodies[1]).not.toContain("passed");
-      expect(bodies[1]).not.toContain("failed");
-      expect(bodies[2]).toContain("E2E Verification");
+      expect(bodies[0]).toContain("Proposal");
+      expect(bodies[1]).toContain("Review");
+      expect(bodies[2]).toContain("E2E Evidence");
+      expect(bodies[2]).not.toContain("passed");
+      expect(bodies[2]).not.toContain("failed");
+      expect(bodies[3]).toContain("E2E Verification");
     });
 
     it("should execute e2e_verify step after e2e passes", async () => {
