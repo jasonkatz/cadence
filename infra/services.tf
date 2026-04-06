@@ -5,8 +5,15 @@ resource "railway_service" "postgres" {
 
   volume = {
     name       = "postgres-data"
-    mount_path = "/var/lib/postgresql/data"
+    mount_path = "/var/lib/postgresql/mount"
   }
+}
+
+resource "railway_variable" "pgdata" {
+  environment_id = railway_project.this.default_environment.id
+  service_id     = railway_service.postgres.id
+  name           = "PGDATA"
+  value          = "/var/lib/postgresql/mount/pgdata"
 }
 
 resource "railway_variable" "postgres_user" {
