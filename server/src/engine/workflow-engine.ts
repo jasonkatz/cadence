@@ -606,13 +606,11 @@ async function postE2eComment(
   token: string,
   repo: string,
   prNumber: number,
-  e2eResult: { e2ePass: boolean; response: string },
+  e2eResult: { response: string },
   iteration: number
 ): Promise<void> {
   try {
-    const icon = e2eResult.e2ePass ? "\u2705" : "\u274c";
-    const status = e2eResult.e2ePass ? "passed" : "failed";
-    const header = `${icon} **E2E ${status}** (iteration ${iteration})`;
+    const header = `\uD83E\uDDEA **E2E Evidence** (iteration ${iteration})`;
     const summary = e2eResult.response
       .replace(/```json[\s\S]*?```/g, "")
       .trim();

@@ -1001,7 +1001,9 @@ describe("workflow engine", () => {
         (c: unknown[]) => (c[0] as Record<string, unknown>).body as string
       );
       expect(bodies[0]).toContain("Review");
-      expect(bodies[1]).toContain("E2E");
+      expect(bodies[1]).toContain("E2E Evidence");
+      expect(bodies[1]).not.toContain("passed");
+      expect(bodies[1]).not.toContain("failed");
       expect(bodies[2]).toContain("E2E Verification");
     });
 

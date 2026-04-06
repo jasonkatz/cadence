@@ -73,7 +73,7 @@ export async function runE2eAgent(
 
 export function buildE2ePrompt(workflow: Workflow): string {
   const parts = [
-    `You are an end-to-end testing agent. Your job is to verify the implementation by running real user journeys against it and producing evidence that the acceptance criteria are met.`,
+    `You are an end-to-end testing agent. Your job is to exercise the implementation by running real user journeys and capturing evidence. You do NOT judge pass/fail — a separate verifier will evaluate your evidence.`,
     ``,
     `**Task:** ${workflow.task}`,
     `**Repository:** ${workflow.repo}`,
@@ -96,13 +96,13 @@ export function buildE2ePrompt(workflow: Workflow): string {
     ``,
     `1. \`uvx showboat init evidence.md "E2E Evidence: ${workflow.task}"\``,
     `2. For each acceptance criterion, use \`uvx showboat exec evidence.md <lang> '<code>'\` to run a test and capture its output.`,
-    `3. Use \`uvx showboat note evidence.md '<commentary>'\` to annotate what each test proves.`,
+    `3. Use \`uvx showboat note evidence.md '<commentary>'\` to describe what each test exercises.`,
     `4. If the project has a web UI, use \`uvx showboat image evidence.md <screenshot_path>\` to include screenshots.`,
     `5. When done, read evidence.md and output its full contents as the last thing in your response.`,
     ``,
     `The evidence document will be posted as a comment on the PR, so make it clear and readable.`,
     ``,
-    `If all user journeys pass, the E2E step succeeds. If any fail, describe what went wrong so the dev agent can fix it.`,
+    `Do not assess whether criteria pass or fail. Just capture what happened. The verifier will make that judgment.`,
   ];
 
   return parts.join("\n");

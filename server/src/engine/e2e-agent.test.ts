@@ -47,11 +47,12 @@ describe("e2e-agent", () => {
       expect(prompt).toContain("cadence/xyz");
     });
 
-    it("should instruct the agent to run E2E user journeys", () => {
+    it("should instruct the agent to run user journeys without judging pass/fail", () => {
       const wf = makeWorkflow();
       const prompt = buildE2ePrompt(wf);
 
       expect(prompt).toContain("user journey");
+      expect(prompt).toContain("do NOT judge pass/fail");
     });
 
     it("should require showboat for evidence capture", () => {
