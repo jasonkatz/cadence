@@ -9,6 +9,27 @@ resource "railway_service" "postgres" {
   }
 }
 
+resource "railway_variable" "postgres_user" {
+  environment_id = railway_project.this.default_environment.id
+  service_id     = railway_service.postgres.id
+  name           = "POSTGRES_USER"
+  value          = "cadence"
+}
+
+resource "railway_variable" "postgres_password" {
+  environment_id = railway_project.this.default_environment.id
+  service_id     = railway_service.postgres.id
+  name           = "POSTGRES_PASSWORD"
+  value          = var.postgres_password
+}
+
+resource "railway_variable" "postgres_db" {
+  environment_id = railway_project.this.default_environment.id
+  service_id     = railway_service.postgres.id
+  name           = "POSTGRES_DB"
+  value          = "cadence"
+}
+
 resource "railway_tcp_proxy" "postgres" {
   environment_id   = railway_project.this.default_environment.id
   service_id       = railway_service.postgres.id
@@ -38,7 +59,7 @@ resource "railway_variable" "server_database_url" {
   environment_id = railway_project.this.default_environment.id
   service_id     = railway_service.server.id
   name           = "DATABASE_URL"
-  value          = "postgresql://$${{postgres.POSTGRES_USER}}:$${{postgres.POSTGRES_PASSWORD}}@$${{postgres.RAILWAY_PRIVATE_DOMAIN}}:5432/$${{postgres.POSTGRES_DB}}"
+  value          = "postgresql://cadence:${var.postgres_password}@$${{postgres.RAILWAY_PRIVATE_DOMAIN}}:5432/cadence"
 }
 
 resource "railway_variable" "server_auth0_audience" {
