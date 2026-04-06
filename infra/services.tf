@@ -41,8 +41,29 @@ resource "railway_variable" "server_database_url" {
   value          = "postgresql://$${{postgres.POSTGRES_USER}}:$${{postgres.POSTGRES_PASSWORD}}@$${{postgres.RAILWAY_PRIVATE_DOMAIN}}:5432/$${{postgres.POSTGRES_DB}}"
 }
 
+resource "railway_variable" "server_auth0_audience" {
+  environment_id = railway_project.this.default_environment.id
+  service_id     = railway_service.server.id
+  name           = "AUTH0_AUDIENCE"
+  value          = var.auth0_audience
+}
+
+resource "railway_variable" "server_auth0_issuer" {
+  environment_id = railway_project.this.default_environment.id
+  service_id     = railway_service.server.id
+  name           = "AUTH0_ISSUER_BASE_URL"
+  value          = var.auth0_issuer_base_url
+}
+
+resource "railway_variable" "server_encryption_key" {
+  environment_id = railway_project.this.default_environment.id
+  service_id     = railway_service.server.id
+  name           = "ENCRYPTION_KEY"
+  value          = var.encryption_key
+}
+
 resource "railway_service_domain" "server" {
   environment_id = railway_project.this.default_environment.id
   service_id     = railway_service.server.id
-  subdomain      = var.project_name
+  subdomain      = "tmpo"
 }

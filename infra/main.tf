@@ -9,7 +9,7 @@ terraform {
 }
 
 provider "railway" {
-  token = var.railway_token
+  # Reads RAILWAY_TOKEN from environment
 }
 
 resource "railway_project" "this" {
