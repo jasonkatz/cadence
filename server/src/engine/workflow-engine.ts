@@ -6,6 +6,8 @@ import { runPlannerAgent as defaultRunPlanner } from "./planner-agent";
 import { runDevAgent as defaultRunDevAgent } from "./dev-agent";
 import { pollCiStatus as defaultPollCiStatus } from "./ci-poller";
 import { runReviewAgent as defaultRunReviewAgent } from "./review-agent";
+import { runE2eAgent as defaultRunE2eAgent } from "./e2e-agent";
+import { runE2eVerifier as defaultRunE2eVerifier } from "./e2e-verifier";
 import { githubService as defaultGithubService } from "../services/github-service";
 import { generatePrDescription as defaultGeneratePrDescription } from "./pr-description";
 import { settingsService as defaultSettingsService } from "../services/settings-service";
@@ -31,6 +33,8 @@ export interface EngineDeps {
   getHeadSha: (token: string, repo: string, branch: string) => Promise<string>;
   postPrComment: typeof defaultGithubService.postPrComment;
   generatePrDescription: typeof defaultGeneratePrDescription;
+  runE2eAgent: typeof defaultRunE2eAgent;
+  runE2eVerifier: typeof defaultRunE2eVerifier;
 }
 
 async function defaultGetPrDiff(token: string, repo: string, prNumber: number): Promise<string> {
@@ -82,6 +86,8 @@ const defaultDeps: EngineDeps = {
   getHeadSha: defaultGetHeadSha,
   postPrComment: defaultGithubService.postPrComment.bind(defaultGithubService),
   generatePrDescription: defaultGeneratePrDescription,
+  runE2eAgent: defaultRunE2eAgent,
+  runE2eVerifier: defaultRunE2eVerifier,
 };
 
 export async function processWorkflow(
@@ -284,6 +290,12 @@ export async function processWorkflow(
         workflowId: workflow.id,
         data: { status: "running", pr_number: pr.number, pr_url: pr.url },
       });
+
+      // Post proposal as first PR comment
+      await postProposalComment(
+        deps, githubToken, workflow.repo, pr.number,
+        currentWorkflow.proposal
+      );
     } catch (error) {
       const detail =
         error instanceof Error ? error.message : String(error);
@@ -408,12 +420,32 @@ export async function processWorkflow(
     data: { stepId: reviewStep.id, type: "review", status: "passed" },
   });
 
-  // Engine stops after review — e2e, e2e_verify, signoff remain pending
-  eventBus.emit({
-    type: "workflow:completed",
-    workflowId: workflow.id,
-    data: { status: "running", pr_number: currentWorkflow.pr_number },
-  });
+  // --- E2E, E2E Verify, Signoff ---
+  await processE2eThroughSignoff(
+    currentWorkflow,
+    steps,
+    githubToken,
+    deps
+  );
+}
+
+async function postProposalComment(
+  deps: EngineDeps,
+  token: string,
+  repo: string,
+  prNumber: number,
+  proposal: string | null
+): Promise<void> {
+  if (!proposal) return;
+  try {
+    const header = `\uD83D\uDCCB **Proposal**`;
+    const body = `${header}\n\n${proposal}`;
+    await deps.postPrComment({ token, repo, prNumber, body });
+  } catch (error) {
+    logger.warn("Failed to post proposal comment", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 async function postReviewComment(
@@ -437,6 +469,204 @@ async function postReviewComment(
   } catch (error) {
     // Non-fatal — don't fail the workflow if we can't post a comment
     logger.warn("Failed to post review comment", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function processE2eThroughSignoff(
+  workflow: Workflow,
+  steps: { id: string; type: string }[],
+  githubToken: string,
+  deps: EngineDeps
+): Promise<void> {
+  const {
+    workflowDao,
+    stepDao,
+    runDao,
+    eventBus,
+    runE2eAgent,
+    runE2eVerifier,
+  } = deps;
+
+  // --- E2E step ---
+  const e2eStep = steps.find((s) => s.type === "e2e");
+  if (!e2eStep) {
+    await workflowDao.updateError(workflow.id, "No e2e step created");
+    return;
+  }
+
+  await stepDao.updateStatus(e2eStep.id, "running");
+  eventBus.emit({
+    type: "step:updated",
+    workflowId: workflow.id,
+    data: { stepId: e2eStep.id, type: "e2e", status: "running" },
+  });
+
+  const e2ePrompt = `Run E2E tests for task: ${workflow.task} on repo ${workflow.repo}`;
+  const e2eRun = await runDao.create({
+    stepId: e2eStep.id,
+    workflowId: workflow.id,
+    agentRole: "e2e",
+    iteration: workflow.iteration,
+    prompt: e2ePrompt,
+  });
+
+  const e2eResult = await runE2eAgent(workflow, githubToken);
+
+  await runDao.updateResult(e2eRun.id, {
+    response: e2eResult.response,
+    exitCode: e2eResult.exitCode,
+    durationSecs: e2eResult.durationSecs,
+  });
+
+  // Post E2E evidence as PR comment
+  await postE2eComment(
+    deps, githubToken, workflow.repo, workflow.pr_number!,
+    e2eResult, workflow.iteration
+  );
+
+  if (!e2eResult.e2ePass) {
+    const detail = e2eResult.response || "E2E tests failed";
+    await stepDao.updateStatus(e2eStep.id, "failed", detail);
+    eventBus.emit({
+      type: "step:updated",
+      workflowId: workflow.id,
+      data: { stepId: e2eStep.id, type: "e2e", status: "failed" },
+    });
+
+    return await regress(workflow, githubToken, detail, deps);
+  }
+
+  // E2E passed
+  await stepDao.updateStatus(e2eStep.id, "passed", undefined);
+  eventBus.emit({
+    type: "step:updated",
+    workflowId: workflow.id,
+    data: { stepId: e2eStep.id, type: "e2e", status: "passed" },
+  });
+
+  // --- E2E Verify step ---
+  const e2eVerifyStep = steps.find((s) => s.type === "e2e_verify");
+  if (!e2eVerifyStep) {
+    await workflowDao.updateError(workflow.id, "No e2e_verify step created");
+    return;
+  }
+
+  await stepDao.updateStatus(e2eVerifyStep.id, "running");
+  eventBus.emit({
+    type: "step:updated",
+    workflowId: workflow.id,
+    data: { stepId: e2eVerifyStep.id, type: "e2e_verify", status: "running" },
+  });
+
+  const verifyPrompt = `Verify E2E evidence for task: ${workflow.task}`;
+  const verifyRun = await runDao.create({
+    stepId: e2eVerifyStep.id,
+    workflowId: workflow.id,
+    agentRole: "e2e_verifier",
+    iteration: workflow.iteration,
+    prompt: verifyPrompt,
+  });
+
+  const verifyResult = await runE2eVerifier(workflow, e2eResult.evidence, githubToken);
+
+  await runDao.updateResult(verifyRun.id, {
+    response: verifyResult.verdict,
+    exitCode: verifyResult.exitCode,
+    durationSecs: verifyResult.durationSecs,
+  });
+
+  // Post E2E verify assessment as PR comment
+  await postE2eVerifyComment(
+    deps, githubToken, workflow.repo, workflow.pr_number!,
+    verifyResult, workflow.iteration
+  );
+
+  if (!verifyResult.e2ePass) {
+    const detail = verifyResult.verdict || "E2E verification failed";
+    await stepDao.updateStatus(e2eVerifyStep.id, "failed", detail);
+    eventBus.emit({
+      type: "step:updated",
+      workflowId: workflow.id,
+      data: { stepId: e2eVerifyStep.id, type: "e2e_verify", status: "failed" },
+    });
+
+    return await regress(workflow, githubToken, detail, deps);
+  }
+
+  // E2E Verify passed
+  await stepDao.updateStatus(e2eVerifyStep.id, "passed", undefined);
+  eventBus.emit({
+    type: "step:updated",
+    workflowId: workflow.id,
+    data: { stepId: e2eVerifyStep.id, type: "e2e_verify", status: "passed" },
+  });
+
+  // --- Signoff step (auto-pass) ---
+  const signoffStep = steps.find((s) => s.type === "signoff");
+  if (!signoffStep) {
+    await workflowDao.updateError(workflow.id, "No signoff step created");
+    return;
+  }
+
+  await stepDao.updateStatus(signoffStep.id, "passed", undefined);
+  eventBus.emit({
+    type: "step:updated",
+    workflowId: workflow.id,
+    data: { stepId: signoffStep.id, type: "signoff", status: "passed" },
+  });
+
+  // --- Workflow complete ---
+  await workflowDao.updateStatus(workflow.id, "complete");
+  eventBus.emit({
+    type: "workflow:completed",
+    workflowId: workflow.id,
+    data: { status: "complete", pr_number: workflow.pr_number },
+  });
+}
+
+async function postE2eComment(
+  deps: EngineDeps,
+  token: string,
+  repo: string,
+  prNumber: number,
+  e2eResult: { response: string },
+  iteration: number
+): Promise<void> {
+  try {
+    const header = `\uD83E\uDDEA **E2E Evidence** (iteration ${iteration})`;
+    const summary = e2eResult.response
+      .replace(/```json[\s\S]*?```/g, "")
+      .trim();
+    const body = summary ? `${header}\n\n${summary}` : header;
+    await deps.postPrComment({ token, repo, prNumber, body });
+  } catch (error) {
+    logger.warn("Failed to post E2E comment", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function postE2eVerifyComment(
+  deps: EngineDeps,
+  token: string,
+  repo: string,
+  prNumber: number,
+  verifyResult: { e2ePass: boolean; response: string },
+  iteration: number
+): Promise<void> {
+  try {
+    const icon = verifyResult.e2ePass ? "\u2705" : "\u274c";
+    const status = verifyResult.e2ePass ? "passed" : "failed";
+    const header = `${icon} **E2E Verification ${status}** (iteration ${iteration})`;
+    const summary = verifyResult.response
+      .replace(/```json[\s\S]*?```/g, "")
+      .trim();
+    const body = summary ? `${header}\n\n${summary}` : header;
+    await deps.postPrComment({ token, repo, prNumber, body });
+  } catch (error) {
+    logger.warn("Failed to post E2E verify comment", {
       error: error instanceof Error ? error.message : String(error),
     });
   }
@@ -687,12 +917,13 @@ async function processRegressionIteration(
     data: { stepId: reviewStep.id, type: "review", status: "passed" },
   });
 
-  // Engine stops after review
-  eventBus.emit({
-    type: "workflow:completed",
-    workflowId: workflow.id,
-    data: { status: "running", pr_number: workflow.pr_number },
-  });
+  // --- E2E, E2E Verify, Signoff ---
+  await processE2eThroughSignoff(
+    workflow,
+    steps,
+    githubToken,
+    deps
+  );
 }
 
 export async function poll(): Promise<void> {

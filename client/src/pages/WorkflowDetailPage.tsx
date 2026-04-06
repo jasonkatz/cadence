@@ -238,7 +238,23 @@ function WorkflowDetailPage() {
                 </span>
               </div>
             </div>
-            {workflow.pr_number && (
+            {workflow.status === "complete" && workflow.pr_number && (
+              <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center gap-2 text-green-800 font-medium">
+                  <span className="text-lg">&#10003;</span>
+                  <span>All stages passed — PR ready for review</span>
+                </div>
+                <a
+                  href={`https://github.com/${workflow.repo}/pull/${workflow.pr_number}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-block text-green-700 hover:text-green-900 font-medium underline"
+                >
+                  {workflow.repo}#{workflow.pr_number}
+                </a>
+              </div>
+            )}
+            {workflow.status !== "complete" && workflow.pr_number && (
               <div className="mt-4 flex items-center gap-2">
                 <span className="text-sm text-gray-500">Pull Request:</span>
                 <a

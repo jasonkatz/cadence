@@ -7,6 +7,8 @@ import type { EngineDeps } from "./workflow-engine";
 import type { DevResult } from "./dev-agent";
 import type { CiPollResult } from "./ci-poller";
 import type { ReviewResult } from "./review-agent";
+import type { E2eResult } from "./e2e-agent";
+import type { E2eVerifierResult } from "./e2e-verifier";
 import { processWorkflow } from "./workflow-engine";
 
 // --- Helpers ---
@@ -164,6 +166,28 @@ function makeDeps() {
     Promise.resolve(makeWorkflow({ iteration: 1 }))
   );
 
+  const mockRunE2eAgent = mock(
+    (_workflow: Workflow, _token: string) =>
+      Promise.resolve<E2eResult>({
+        e2ePass: true,
+        evidence: "All user journeys passed. Login form renders, email validation works.",
+        exitCode: 0,
+        durationSecs: 120,
+        response: "E2E evidence output",
+      })
+  );
+
+  const mockRunE2eVerifier = mock(
+    (_workflow: Workflow, _evidence: string, _token: string) =>
+      Promise.resolve<E2eVerifierResult>({
+        e2ePass: true,
+        verdict: '{"e2e_pass": true, "criteria_results": []}',
+        exitCode: 0,
+        durationSecs: 30,
+        response: "All criteria verified.",
+      })
+  );
+
   const deps: EngineDeps = {
     workflowDao: {
       updateStatus: mockUpdateStatus,
@@ -195,6 +219,8 @@ function makeDeps() {
     getHeadSha: mockGetHeadSha,
     postPrComment: mockPostPrComment,
     generatePrDescription: mockGeneratePrDescription,
+    runE2eAgent: mockRunE2eAgent,
+    runE2eVerifier: mockRunE2eVerifier,
   };
 
   return {
@@ -219,6 +245,8 @@ function makeDeps() {
       getHeadSha: mockGetHeadSha,
       postPrComment: mockPostPrComment,
       generatePrDescription: mockGeneratePrDescription,
+      runE2eAgent: mockRunE2eAgent,
+      runE2eVerifier: mockRunE2eVerifier,
     },
   };
 }
@@ -261,9 +289,9 @@ describe("workflow engine", () => {
       expect(mocks.stepUpdateStatus).toHaveBeenCalledWith("step-0", "passed", undefined);
       // Proposal stored on workflow
       expect(mocks.updateProposal).toHaveBeenCalledTimes(1);
-      // Runs recorded (planner + dev + reviewer)
-      expect(mocks.runCreate).toHaveBeenCalledTimes(3);
-      expect(mocks.runUpdateResult).toHaveBeenCalledTimes(3);
+      // Runs recorded (planner + dev + reviewer + e2e + e2e_verifier)
+      expect(mocks.runCreate).toHaveBeenCalledTimes(5);
+      expect(mocks.runUpdateResult).toHaveBeenCalledTimes(5);
     });
 
     it("should fail workflow when plan step fails", async () => {
@@ -294,17 +322,18 @@ describe("workflow engine", () => {
       expect(errorMsg).toContain("iteration limit");
     });
 
-    it("should not process e2e steps after review passes", async () => {
+    it("should process all 7 steps through signoff", async () => {
       const { deps, mocks } = makeDeps();
       const wf = makeWorkflow();
 
       await processWorkflow(wf, TEST_TOKEN, deps);
 
-      // plan, dev, ci, review should have been set to running
+      // plan, dev, ci, review, e2e, e2e_verify, signoff should have been set to running or passed
       const runningCalls = mocks.stepUpdateStatus.mock.calls.filter(
         (c) => c[1] === "running"
       );
-      expect(runningCalls).toHaveLength(4);
+      // plan + dev + ci + review + e2e + e2e_verify = 6 running (signoff auto-passes)
+      expect(runningCalls).toHaveLength(6);
     });
 
     it("should emit SSE events for step transitions", async () => {
@@ -331,14 +360,14 @@ describe("workflow engine", () => {
       await processWorkflow(wf, TEST_TOKEN, deps);
 
       // First run create is for planner
-      expect(mocks.runCreate).toHaveBeenCalledTimes(3); // planner + dev + reviewer
+      expect(mocks.runCreate).toHaveBeenCalledTimes(5); // planner + dev + reviewer + e2e + e2e_verifier
       const createArg = mocks.runCreate.mock.calls[0][0] as Record<string, unknown>;
       expect(createArg.stepId).toBe("step-0");
       expect(createArg.agentRole).toBe("planner");
       expect(createArg.prompt).toBeTruthy();
 
       // First run update is for planner
-      expect(mocks.runUpdateResult).toHaveBeenCalledTimes(3);
+      expect(mocks.runUpdateResult).toHaveBeenCalledTimes(5);
       const updateArg = mocks.runUpdateResult.mock.calls[0][1] as Record<string, unknown>;
       expect(updateArg.response).toBe("full agent output");
       expect(updateArg.exitCode).toBe(0);
@@ -380,7 +409,7 @@ describe("workflow engine", () => {
       // Dev agent should be invoked
       expect(mocks.runDevAgent).toHaveBeenCalledTimes(1);
       // Dev run should be recorded
-      expect(mocks.runCreate).toHaveBeenCalledTimes(3); // planner + dev + reviewer
+      expect(mocks.runCreate).toHaveBeenCalledTimes(5); // planner + dev + reviewer + e2e + e2e_verifier
     });
 
     it("should create PR after dev step passes", async () => {
@@ -479,17 +508,20 @@ describe("workflow engine", () => {
       expect(devEvents.length).toBeGreaterThanOrEqual(2); // running + passed
     });
 
-    it("should stop after review step — e2e steps remain pending", async () => {
+    it("should process e2e and signoff after review passes", async () => {
       const { deps, mocks } = makeDeps();
       const wf = makeWorkflow();
 
       await processWorkflow(wf, TEST_TOKEN, deps);
 
-      // plan, dev, ci, review should have been set to running
+      // plan + dev + ci + review + e2e + e2e_verify = 6 running (signoff skips running)
       const runningCalls = mocks.stepUpdateStatus.mock.calls.filter(
         (c) => c[1] === "running"
       );
-      expect(runningCalls).toHaveLength(4); // plan + dev + ci + review
+      expect(runningCalls).toHaveLength(6);
+
+      expect(mocks.runE2eAgent).toHaveBeenCalledTimes(1);
+      expect(mocks.runE2eVerifier).toHaveBeenCalledTimes(1);
     });
 
     it("should use generated PR title and body", async () => {
@@ -522,20 +554,20 @@ describe("workflow engine", () => {
       await processWorkflow(wf, TEST_TOKEN, deps);
 
       // Second run create call is for dev
-      expect(mocks.runCreate).toHaveBeenCalledTimes(3); // planner + dev + reviewer
+      expect(mocks.runCreate).toHaveBeenCalledTimes(5); // planner + dev + reviewer + e2e + e2e_verifier
       const devCreateArg = mocks.runCreate.mock.calls[1][0] as Record<string, unknown>;
       expect(devCreateArg.agentRole).toBe("dev");
       expect(devCreateArg.prompt).toBeTruthy();
 
       // Second run update is for dev
-      expect(mocks.runUpdateResult).toHaveBeenCalledTimes(3);
+      expect(mocks.runUpdateResult).toHaveBeenCalledTimes(5);
       const devUpdateArg = mocks.runUpdateResult.mock.calls[1][1] as Record<string, unknown>;
       expect(devUpdateArg.response).toBe("full dev output");
       expect(devUpdateArg.exitCode).toBe(0);
       expect(devUpdateArg.durationSecs).toBe(120);
     });
 
-    it("should emit workflow:completed after successful PR creation", async () => {
+    it("should emit workflow:completed with status complete after all steps pass", async () => {
       const { deps, emittedEvents } = makeDeps();
       const wf = makeWorkflow();
 
@@ -546,7 +578,7 @@ describe("workflow engine", () => {
       );
       expect(completedEvents).toHaveLength(1);
       const data = completedEvents[0].data as Record<string, unknown>;
-      expect(data.status).toBe("running");
+      expect(data.status).toBe("complete");
       expect(data.pr_number).toBe(42);
     });
 
@@ -623,8 +655,8 @@ describe("workflow engine", () => {
 
       await processWorkflow(wf, TEST_TOKEN, deps);
 
-      // Should have 3 run creates: planner, dev, reviewer
-      expect(mocks.runCreate).toHaveBeenCalledTimes(3);
+      // Should have 5 run creates: planner, dev, reviewer, e2e, e2e_verifier
+      expect(mocks.runCreate).toHaveBeenCalledTimes(5);
       const reviewCreateArg = mocks.runCreate.mock.calls[2][0] as Record<string, unknown>;
       expect(reviewCreateArg.agentRole).toBe("reviewer");
     });
@@ -638,23 +670,25 @@ describe("workflow engine", () => {
       expect(mocks.getPrDiff).toHaveBeenCalledWith(TEST_TOKEN, "acme/webapp", 42);
     });
 
-    it("should stop after review passes — e2e steps remain pending", async () => {
+    it("should complete workflow after all steps pass including signoff", async () => {
       const { deps, mocks, emittedEvents } = makeDeps();
       const wf = makeWorkflow();
 
       await processWorkflow(wf, TEST_TOKEN, deps);
 
-      // Only plan, dev, ci, review should have been set to running
+      // All 6 agent steps should run + signoff auto-passes
       const runningCalls = mocks.stepUpdateStatus.mock.calls.filter(
         (c) => c[1] === "running"
       );
-      expect(runningCalls).toHaveLength(4); // plan + dev + ci + review
+      expect(runningCalls).toHaveLength(6);
 
-      // Should emit workflow:completed
+      // Should emit workflow:completed with status complete
       const completedEvents = emittedEvents.filter(
         (e) => e.type === "workflow:completed"
       );
       expect(completedEvents).toHaveLength(1);
+      const data = completedEvents[0].data as Record<string, unknown>;
+      expect(data.status).toBe("complete");
     });
 
     // --- Regression tests ---
@@ -855,7 +889,7 @@ describe("workflow engine", () => {
       await processWorkflow(wf, TEST_TOKEN, deps);
 
       // Third runUpdateResult is for reviewer
-      expect(mocks.runUpdateResult).toHaveBeenCalledTimes(3);
+      expect(mocks.runUpdateResult).toHaveBeenCalledTimes(5);
       const reviewUpdateArg = mocks.runUpdateResult.mock.calls[2][1] as Record<string, unknown>;
       expect(reviewUpdateArg.response).toBe('{"review_pass": true}');
     });
@@ -876,11 +910,14 @@ describe("workflow engine", () => {
 
       await processWorkflow(wf, TEST_TOKEN, deps);
 
-      expect(mocks.postPrComment).toHaveBeenCalledTimes(1);
-      const args = mocks.postPrComment.mock.calls[0][0];
-      expect(args.repo).toBe("acme/webapp");
-      expect(args.prNumber).toBe(42);
-      expect(args.body).toContain("Review passed");
+      // Proposal + review + E2E evidence + E2E verify
+      expect(mocks.postPrComment).toHaveBeenCalledTimes(4);
+      const proposalArgs = mocks.postPrComment.mock.calls[0][0];
+      expect(proposalArgs.body).toContain("Proposal");
+      const reviewArgs = mocks.postPrComment.mock.calls[1][0];
+      expect(reviewArgs.repo).toBe("acme/webapp");
+      expect(reviewArgs.prNumber).toBe(42);
+      expect(reviewArgs.body).toContain("Review passed");
     });
 
     it("should post a PR comment after review fails (before regression)", async () => {
@@ -910,10 +947,12 @@ describe("workflow engine", () => {
 
       await processWorkflow(wf, TEST_TOKEN, deps);
 
-      // Should have 2 comments: one for fail, one for pass
-      expect(mocks.postPrComment).toHaveBeenCalledTimes(2);
+      // proposal + review fail + review pass + e2e evidence + e2e verify = 5
+      expect(mocks.postPrComment).toHaveBeenCalledTimes(5);
       const firstArgs = mocks.postPrComment.mock.calls[0][0];
-      expect(firstArgs.body).toContain("Review failed");
+      expect(firstArgs.body).toContain("Proposal");
+      const secondArgs = mocks.postPrComment.mock.calls[1][0];
+      expect(secondArgs.body).toContain("Review failed");
     });
 
     it("should not fail workflow if PR comment fails to post", async () => {
@@ -926,6 +965,251 @@ describe("workflow engine", () => {
 
       // Workflow should still complete successfully
       expect(mocks.updateError).not.toHaveBeenCalled();
+    });
+
+    // --- E2E step tests ---
+
+    it("should execute e2e step after review passes", async () => {
+      const { deps, mocks } = makeDeps();
+      const wf = makeWorkflow();
+
+      await processWorkflow(wf, TEST_TOKEN, deps);
+
+      const e2eStepIndex = STEP_TYPES.indexOf("e2e");
+      expect(mocks.stepUpdateStatus).toHaveBeenCalledWith(`step-${e2eStepIndex}`, "running");
+      expect(mocks.stepUpdateStatus).toHaveBeenCalledWith(`step-${e2eStepIndex}`, "passed", undefined);
+      expect(mocks.runE2eAgent).toHaveBeenCalledTimes(1);
+    });
+
+    it("should record e2e agent run with agent_role e2e", async () => {
+      const { deps, mocks } = makeDeps();
+      const wf = makeWorkflow();
+
+      await processWorkflow(wf, TEST_TOKEN, deps);
+
+      // 4th run create is for e2e
+      const e2eCreateArg = mocks.runCreate.mock.calls[3][0] as Record<string, unknown>;
+      expect(e2eCreateArg.agentRole).toBe("e2e");
+    });
+
+    it("should post 4 PR comments: proposal, review, e2e evidence, e2e verification", async () => {
+      const { deps, mocks } = makeDeps();
+      const wf = makeWorkflow();
+
+      await processWorkflow(wf, TEST_TOKEN, deps);
+
+      // 4 comments on happy path: proposal + review + e2e evidence + e2e verify
+      expect(mocks.postPrComment).toHaveBeenCalledTimes(4);
+
+      const bodies = mocks.postPrComment.mock.calls.map(
+        (c: unknown[]) => (c[0] as Record<string, unknown>).body as string
+      );
+      expect(bodies[0]).toContain("Proposal");
+      expect(bodies[1]).toContain("Review");
+      expect(bodies[2]).toContain("E2E Evidence");
+      expect(bodies[2]).not.toContain("passed");
+      expect(bodies[2]).not.toContain("failed");
+      expect(bodies[3]).toContain("E2E Verification");
+    });
+
+    it("should execute e2e_verify step after e2e passes", async () => {
+      const { deps, mocks } = makeDeps();
+      const wf = makeWorkflow();
+
+      await processWorkflow(wf, TEST_TOKEN, deps);
+
+      const e2eVerifyStepIndex = STEP_TYPES.indexOf("e2e_verify");
+      expect(mocks.stepUpdateStatus).toHaveBeenCalledWith(`step-${e2eVerifyStepIndex}`, "running");
+      expect(mocks.stepUpdateStatus).toHaveBeenCalledWith(`step-${e2eVerifyStepIndex}`, "passed", undefined);
+      expect(mocks.runE2eVerifier).toHaveBeenCalledTimes(1);
+    });
+
+    it("should record e2e_verifier run with agent_role e2e_verifier", async () => {
+      const { deps, mocks } = makeDeps();
+      const wf = makeWorkflow();
+
+      await processWorkflow(wf, TEST_TOKEN, deps);
+
+      // 5th run create is for e2e_verifier
+      const verifierCreateArg = mocks.runCreate.mock.calls[4][0] as Record<string, unknown>;
+      expect(verifierCreateArg.agentRole).toBe("e2e_verifier");
+    });
+
+    it("should pass e2e evidence to e2e verifier", async () => {
+      const { deps, mocks } = makeDeps();
+      const wf = makeWorkflow();
+
+      mocks.runE2eAgent.mockResolvedValue({
+        e2ePass: true,
+        evidence: "Login form screenshot captured",
+        exitCode: 0,
+        durationSecs: 120,
+        response: "E2E full response",
+      });
+
+      await processWorkflow(wf, TEST_TOKEN, deps);
+
+      // e2e verifier should receive the evidence
+      expect(mocks.runE2eVerifier).toHaveBeenCalledTimes(1);
+      const verifierArgs = mocks.runE2eVerifier.mock.calls[0];
+      // Second arg is the evidence string
+      expect(verifierArgs[1]).toBe("Login form screenshot captured");
+    });
+
+    // --- Signoff step tests ---
+
+    it("should auto-pass signoff after e2e_verify passes", async () => {
+      const { deps, mocks } = makeDeps();
+      const wf = makeWorkflow();
+
+      await processWorkflow(wf, TEST_TOKEN, deps);
+
+      const signoffStepIndex = STEP_TYPES.indexOf("signoff");
+      // Signoff should go directly to passed (no running transition)
+      expect(mocks.stepUpdateStatus).toHaveBeenCalledWith(`step-${signoffStepIndex}`, "passed", undefined);
+    });
+
+    it("should set workflow status to complete after signoff", async () => {
+      const { deps, mocks } = makeDeps();
+      const wf = makeWorkflow();
+
+      await processWorkflow(wf, TEST_TOKEN, deps);
+
+      expect(mocks.updateStatus).toHaveBeenCalledWith("wf-1", "complete");
+    });
+
+    // --- E2E regression tests ---
+
+    it("should regress when e2e step fails", async () => {
+      const { deps, mocks } = makeDeps();
+      const wf = makeWorkflow();
+
+      let e2eCallCount = 0;
+      mocks.runE2eAgent.mockImplementation(() => {
+        e2eCallCount++;
+        if (e2eCallCount === 1) {
+          return Promise.resolve({
+            e2ePass: false,
+            evidence: "",
+            exitCode: 1,
+            durationSecs: 60,
+            response: "E2E failed: login form not found",
+          });
+        }
+        return Promise.resolve({
+          e2ePass: true,
+          evidence: "All journeys passed.",
+          exitCode: 0,
+          durationSecs: 120,
+          response: "E2E evidence",
+        });
+      });
+
+      await processWorkflow(wf, TEST_TOKEN, deps);
+
+      // Should regress
+      expect(mocks.updateIteration).toHaveBeenCalledWith("wf-1", 1);
+      expect(mocks.createIterationSteps).toHaveBeenCalledWith("wf-1", 1);
+    });
+
+    it("should include e2e failure context in regression dev prompt", async () => {
+      const { deps, mocks } = makeDeps();
+      const wf = makeWorkflow();
+
+      let e2eCallCount = 0;
+      mocks.runE2eAgent.mockImplementation(() => {
+        e2eCallCount++;
+        if (e2eCallCount === 1) {
+          return Promise.resolve({
+            e2ePass: false,
+            evidence: "",
+            exitCode: 1,
+            durationSecs: 60,
+            response: "E2E failed: login form not found",
+          });
+        }
+        return Promise.resolve({
+          e2ePass: true,
+          evidence: "All passed.",
+          exitCode: 0,
+          durationSecs: 120,
+          response: "E2E evidence",
+        });
+      });
+
+      await processWorkflow(wf, TEST_TOKEN, deps);
+
+      const devRunCreateCalls = mocks.runCreate.mock.calls.filter(
+        (c) => (c[0] as Record<string, unknown>).agentRole === "dev"
+      );
+      expect(devRunCreateCalls.length).toBeGreaterThanOrEqual(2);
+      const secondDevPrompt = (devRunCreateCalls[1][0] as Record<string, unknown>).prompt as string;
+      expect(secondDevPrompt).toContain("login form not found");
+    });
+
+    it("should regress when e2e_verify step fails", async () => {
+      const { deps, mocks } = makeDeps();
+      const wf = makeWorkflow();
+
+      let verifierCallCount = 0;
+      mocks.runE2eVerifier.mockImplementation(() => {
+        verifierCallCount++;
+        if (verifierCallCount === 1) {
+          return Promise.resolve({
+            e2ePass: false,
+            verdict: '{"e2e_pass": false, "missing_evidence": ["screenshot of login form"]}',
+            exitCode: 0,
+            durationSecs: 30,
+            response: "Missing evidence for login form criterion.",
+          });
+        }
+        return Promise.resolve({
+          e2ePass: true,
+          verdict: '{"e2e_pass": true}',
+          exitCode: 0,
+          durationSecs: 25,
+          response: "All verified.",
+        });
+      });
+
+      await processWorkflow(wf, TEST_TOKEN, deps);
+
+      expect(mocks.updateIteration).toHaveBeenCalledWith("wf-1", 1);
+    });
+
+    it("should include e2e_verify feedback in regression dev prompt", async () => {
+      const { deps, mocks } = makeDeps();
+      const wf = makeWorkflow();
+
+      let verifierCallCount = 0;
+      mocks.runE2eVerifier.mockImplementation(() => {
+        verifierCallCount++;
+        if (verifierCallCount === 1) {
+          return Promise.resolve({
+            e2ePass: false,
+            verdict: '{"e2e_pass": false, "missing_evidence": ["screenshot of login form"]}',
+            exitCode: 0,
+            durationSecs: 30,
+            response: "Missing evidence for login form criterion.",
+          });
+        }
+        return Promise.resolve({
+          e2ePass: true,
+          verdict: '{"e2e_pass": true}',
+          exitCode: 0,
+          durationSecs: 25,
+          response: "All verified.",
+        });
+      });
+
+      await processWorkflow(wf, TEST_TOKEN, deps);
+
+      const devRunCreateCalls = mocks.runCreate.mock.calls.filter(
+        (c) => (c[0] as Record<string, unknown>).agentRole === "dev"
+      );
+      expect(devRunCreateCalls.length).toBeGreaterThanOrEqual(2);
+      const secondDevPrompt = (devRunCreateCalls[1][0] as Record<string, unknown>).prompt as string;
+      expect(secondDevPrompt).toContain("missing_evidence");
     });
   });
 });

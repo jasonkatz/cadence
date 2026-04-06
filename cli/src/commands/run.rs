@@ -81,22 +81,50 @@ pub async fn run(
                 "workflow:completed" => {
                     if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
                         let status = parsed["status"].as_str().unwrap_or("unknown");
-                        if let Some(pr_number) = parsed["pr_number"].as_i64() {
-                            let pr_url = parsed["pr_url"]
-                                .as_str()
-                                .map(|s| s.to_string())
-                                .unwrap_or_else(|| {
-                                    format!(
-                                        "https://github.com/{}/pull/{}",
-                                        workflow_repo, pr_number
-                                    )
-                                });
-                            println!("\n  PR created: {}", pr_url);
-                        } else if status != "running" {
-                            println!("\nWorkflow {}", status);
-                        }
-                        if let Some(error) = parsed["error"].as_str() {
-                            println!("Error: {}", error);
+                        match status {
+                            "complete" => {
+                                println!();
+                                if let Some(pr_number) = parsed["pr_number"].as_i64() {
+                                    let pr_url = parsed["pr_url"]
+                                        .as_str()
+                                        .map(|s| s.to_string())
+                                        .unwrap_or_else(|| {
+                                            format!(
+                                                "https://github.com/{}/pull/{}",
+                                                workflow_repo, pr_number
+                                            )
+                                        });
+                                    println!("All stages passed. PR ready for review:");
+                                    println!("  {}", pr_url);
+                                } else {
+                                    println!("All stages passed.");
+                                }
+                            }
+                            "failed" => {
+                                println!("\nWorkflow failed");
+                                if let Some(error) = parsed["error"].as_str() {
+                                    println!("  {}", error);
+                                }
+                                if let Some(step) = parsed["failedStep"].as_str() {
+                                    println!("  Failed step: {}", step);
+                                }
+                            }
+                            _ => {
+                                if let Some(pr_number) = parsed["pr_number"].as_i64() {
+                                    let pr_url = parsed["pr_url"]
+                                        .as_str()
+                                        .map(|s| s.to_string())
+                                        .unwrap_or_else(|| {
+                                            format!(
+                                                "https://github.com/{}/pull/{}",
+                                                workflow_repo, pr_number
+                                            )
+                                        });
+                                    println!("\n  PR: {}", pr_url);
+                                } else {
+                                    println!("\nWorkflow {}", status);
+                                }
+                            }
                         }
                     }
                     return false; // stop streaming
