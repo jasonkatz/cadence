@@ -1,5 +1,4 @@
 import { useEffect, useRef } from "react";
-import { useAuth } from "./useAuth";
 import { config } from "../config";
 
 interface WorkflowEventData {
@@ -11,7 +10,6 @@ export function useWorkflowEvents(
   workflowId: string | undefined,
   onEvent: (event: WorkflowEventData) => void
 ) {
-  const { getAccessTokenSilently } = useAuth();
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
 
@@ -21,15 +19,12 @@ export function useWorkflowEvents(
     let cancelled = false;
 
     async function connect() {
-      const token = await getAccessTokenSilently();
       if (cancelled) return;
 
-      // EventSource doesn't support auth headers, so use fetch + ReadableStream
       const response = await fetch(
         `${config.apiUrl}/v1/workflows/${workflowId}/events`,
         {
           headers: {
-            Authorization: `Bearer ${token}`,
             Accept: "text/event-stream",
           },
         }
@@ -78,5 +73,5 @@ export function useWorkflowEvents(
     return () => {
       cancelled = true;
     };
-  }, [workflowId, getAccessTokenSilently]);
+  }, [workflowId]);
 }

@@ -2,21 +2,12 @@ import { query } from "../db";
 
 export interface User {
   id: string;
-  auth0_id: string;
   email: string;
   name?: string;
   created_at: Date;
 }
 
 export const userDao = {
-  async findByAuth0Id(auth0Id: string): Promise<User | null> {
-    const result = await query<User>(
-      "SELECT * FROM users WHERE auth0_id = $1",
-      [auth0Id]
-    );
-    return result.rows[0] || null;
-  },
-
   async findById(id: string): Promise<User | null> {
     const result = await query<User>("SELECT * FROM users WHERE id = $1", [id]);
     return result.rows[0] || null;
@@ -30,15 +21,14 @@ export const userDao = {
   },
 
   async create(data: {
-    auth0Id: string;
     email: string;
     name?: string;
   }): Promise<User> {
     const result = await query<User>(
-      `INSERT INTO users (auth0_id, email, name)
-       VALUES ($1, $2, $3)
+      `INSERT INTO users (email, name)
+       VALUES ($1, $2)
        RETURNING *`,
-      [data.auth0Id, data.email, data.name]
+      [data.email, data.name]
     );
     return result.rows[0];
   },

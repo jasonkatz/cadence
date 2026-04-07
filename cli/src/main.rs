@@ -3,10 +3,9 @@ use std::process;
 
 mod api;
 mod commands;
-mod config;
 mod output;
 
-use commands::{cancel, config as config_cmd, list, login, logout, logs, proposal, run, status, whoami};
+use commands::{cancel, config as config_cmd, list, logs, proposal, run, status};
 
 #[derive(Parser)]
 #[command(name = "tmpo")]
@@ -27,12 +26,6 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Authenticate via browser (opens Auth0 device flow)
-    Login,
-    /// Clear stored credentials
-    Logout,
-    /// Display current user info
-    Whoami,
     /// Manage configuration
     Config {
         #[command(subcommand)]
@@ -127,9 +120,6 @@ async fn main() {
     };
 
     let result = match cli.command {
-        Commands::Login => login::run(&ctx).await,
-        Commands::Logout => logout::run(&ctx).await,
-        Commands::Whoami => whoami::run(&ctx).await,
         Commands::Config { action } => match action {
             ConfigAction::Set { key, value } => config_cmd::run_set(&ctx, &key, &value).await,
             ConfigAction::Get => config_cmd::run_get(&ctx).await,

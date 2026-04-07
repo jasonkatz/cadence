@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction, Router } from "express";
 import { workflowDao as defaultWorkflowDao } from "../dao/workflow-dao";
 import { eventBus as defaultEventBus, WorkflowEvent } from "../events/event-bus";
-import { NotFoundError, UnauthorizedError } from "../middleware/error-handler";
+import { NotFoundError } from "../middleware/error-handler";
 
 export interface EventsHandlerDeps {
   workflowDao: Pick<typeof defaultWorkflowDao, "findByIdAndUser">;
@@ -16,11 +16,9 @@ const defaultDeps: EventsHandlerDeps = {
 export function createEventsHandler(deps: EventsHandlerDeps = defaultDeps) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      if (!req.user) throw new UnauthorizedError();
-
       const workflow = await deps.workflowDao.findByIdAndUser(
         req.params.id,
-        req.user.id
+        req.user!.id
       );
       if (!workflow) {
         throw new NotFoundError("Workflow not found");

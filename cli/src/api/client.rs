@@ -2,8 +2,6 @@ use reqwest::Client;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use crate::config::Credentials;
-
 pub struct ApiClient {
     client: Client,
     base_url: String,
@@ -17,20 +15,10 @@ impl ApiClient {
         }
     }
 
-    fn get_token() -> anyhow::Result<String> {
-        let creds = Credentials::load()?;
-        creds
-            .access_token
-            .ok_or_else(|| anyhow::anyhow!("Not authenticated. Run 'tmpo login' first."))
-    }
-
     pub async fn get<T: DeserializeOwned>(&self, path: &str) -> anyhow::Result<T> {
-        let token = Self::get_token()?;
-
         let response = self
             .client
             .get(format!("{}{}", self.base_url, path))
-            .bearer_auth(&token)
             .send()
             .await?;
 
@@ -44,12 +32,9 @@ impl ApiClient {
     }
 
     pub async fn post<T: DeserializeOwned>(&self, path: &str) -> anyhow::Result<T> {
-        let token = Self::get_token()?;
-
         let response = self
             .client
             .post(format!("{}{}", self.base_url, path))
-            .bearer_auth(&token)
             .send()
             .await?;
 
@@ -67,12 +52,9 @@ impl ApiClient {
         path: &str,
         body: &B,
     ) -> anyhow::Result<T> {
-        let token = Self::get_token()?;
-
         let response = self
             .client
             .post(format!("{}{}", self.base_url, path))
-            .bearer_auth(&token)
             .json(body)
             .send()
             .await?;
@@ -96,12 +78,9 @@ impl ApiClient {
     where
         F: FnMut(&str, &str) -> bool, // (event_type, data) -> continue?
     {
-        let token = Self::get_token()?;
-
         let response = self
             .client
             .get(format!("{}{}", self.base_url, path))
-            .bearer_auth(&token)
             .header("Accept", "text/event-stream")
             .send()
             .await?;
@@ -146,12 +125,9 @@ impl ApiClient {
         path: &str,
         body: &B,
     ) -> anyhow::Result<T> {
-        let token = Self::get_token()?;
-
         let response = self
             .client
             .put(format!("{}{}", self.base_url, path))
-            .bearer_auth(&token)
             .json(body)
             .send()
             .await?;

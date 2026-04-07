@@ -1,22 +1,16 @@
-import { useAuth } from "./useAuth";
 import { useCallback, useMemo } from "react";
 import { config } from "../config";
 
 export function useApi() {
-  const { getAccessTokenSilently } = useAuth();
-
   const request = useCallback(
     async <T>(
       method: string,
       path: string,
       body?: unknown
     ): Promise<T> => {
-      const token = await getAccessTokenSilently();
-
       const response = await fetch(`${config.apiUrl}${path}`, {
         method,
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         body: body ? JSON.stringify(body) : undefined,
@@ -29,7 +23,7 @@ export function useApi() {
 
       return response.json();
     },
-    [getAccessTokenSilently]
+    []
   );
 
   return useMemo(

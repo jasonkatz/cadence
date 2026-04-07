@@ -1,8 +1,5 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { useAuth0 } from "@auth0/auth0-react";
-
-jest.mock("@auth0/auth0-react");
 
 const mockNavigate = jest.fn();
 jest.mock("react-router-dom", () => ({
@@ -17,19 +14,7 @@ jest.mock("../hooks/useApi", () => ({
   }),
 }));
 
-const mockUseAuth0 = useAuth0 as jest.MockedFunction<typeof useAuth0>;
-
 import NewWorkflowPage from "./NewWorkflowPage";
-
-function setupAuth() {
-  mockUseAuth0.mockReturnValue({
-    isLoading: false,
-    isAuthenticated: true,
-    user: { email: "test@example.com" },
-    getAccessTokenSilently: jest.fn().mockResolvedValue("token"),
-    logout: jest.fn(),
-  } as unknown as ReturnType<typeof useAuth0>);
-}
 
 function renderPage() {
   return render(
@@ -42,7 +27,6 @@ function renderPage() {
 describe("NewWorkflowPage", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    setupAuth();
     mockPost.mockResolvedValue({ id: "wf-123" });
   });
 

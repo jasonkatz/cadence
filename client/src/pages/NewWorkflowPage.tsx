@@ -1,4 +1,3 @@
-import { useAuth, withAuthenticationRequired } from "../hooks/useAuth";
 import { useApi } from "../hooks/useApi";
 import { Link, useNavigate } from "react-router-dom";
 import { FormEvent, useState } from "react";
@@ -7,8 +6,7 @@ interface WorkflowCreateResponse {
   id: string;
 }
 
-function NewWorkflowPage() {
-  const { user, logout } = useAuth();
+export default function NewWorkflowPage() {
   const api = useApi();
   const navigate = useNavigate();
 
@@ -62,19 +60,6 @@ function NewWorkflowPage() {
               >
                 Settings
               </Link>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">{user?.email}</span>
-              <button
-                onClick={() =>
-                  logout({
-                    logoutParams: { returnTo: window.location.origin },
-                  })
-                }
-                className="text-sm text-gray-600 hover:text-gray-900 cursor-pointer"
-              >
-                Sign Out
-              </button>
             </div>
           </div>
         </div>
@@ -197,11 +182,3 @@ function NewWorkflowPage() {
     </div>
   );
 }
-
-export default withAuthenticationRequired(NewWorkflowPage, {
-  onRedirecting: () => (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
-    </div>
-  ),
-});

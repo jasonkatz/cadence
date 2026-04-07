@@ -1,4 +1,3 @@
-import { useAuth, withAuthenticationRequired } from "../hooks/useAuth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApi } from "../hooks/useApi";
 import { useWorkflowEvents } from "../hooks/useWorkflowEvents";
@@ -250,9 +249,8 @@ function groupStepsByIteration(steps: Step[]): Map<number, Step[]> {
   return groups;
 }
 
-function WorkflowDetailPage() {
+export default function WorkflowDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { user, logout } = useAuth();
   const api = useApi();
   const queryClient = useQueryClient();
   const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
@@ -324,19 +322,6 @@ function WorkflowDetailPage() {
               >
                 Settings
               </Link>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">{user?.email}</span>
-              <button
-                onClick={() =>
-                  logout({
-                    logoutParams: { returnTo: window.location.origin },
-                  })
-                }
-                className="text-sm text-gray-600 hover:text-gray-900 cursor-pointer"
-              >
-                Sign Out
-              </button>
             </div>
           </div>
         </div>
@@ -460,11 +445,3 @@ function WorkflowDetailPage() {
     </div>
   );
 }
-
-export default withAuthenticationRequired(WorkflowDetailPage, {
-  onRedirecting: () => (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
-    </div>
-  ),
-});

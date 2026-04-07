@@ -3,11 +3,11 @@ import type { User } from "../dao/user-dao";
 import { createUserService, UserServiceDeps } from "./user-service";
 
 function makeDeps() {
-  const mockFindByAuth0Id = mock((_auth0Id: string) =>
+  const mockFindByEmail = mock((_email: string) =>
     Promise.resolve(null as User | null)
   );
-  const mockCreate = mock((_data: { auth0Id: string; email: string; name?: string }) =>
-    Promise.resolve({ id: "", auth0_id: "", email: "", name: "", created_at: new Date() } as User)
+  const mockCreate = mock((_data: { email: string; name?: string }) =>
+    Promise.resolve({ id: "", email: "", name: "", created_at: new Date() } as User)
   );
   const mockFindById = mock((_id: string) => Promise.resolve(null as User | null));
   const mockUpdate = mock((_id: string, _data: { email?: string; name?: string }) =>
@@ -16,14 +16,14 @@ function makeDeps() {
 
   const deps: UserServiceDeps = {
     userDao: {
-      findByAuth0Id: mockFindByAuth0Id,
+      findByEmail: mockFindByEmail,
       create: mockCreate,
       findById: mockFindById,
       update: mockUpdate,
     },
   };
 
-  return { deps, mocks: { findByAuth0Id: mockFindByAuth0Id, create: mockCreate } };
+  return { deps, mocks: { findByEmail: mockFindByEmail, create: mockCreate } };
 }
 
 describe("userService", () => {
@@ -37,19 +37,17 @@ describe("userService", () => {
   });
 
   describe("findOrCreate", () => {
-    it("should return existing user if found by auth0Id", async () => {
+    it("should return existing user if found by email", async () => {
       const existingUser: User = {
         id: "123",
-        auth0_id: "auth0|123",
         email: "test@example.com",
         name: "Test User",
         created_at: new Date(),
       };
 
-      mocks.findByAuth0Id.mockResolvedValue(existingUser);
+      mocks.findByEmail.mockResolvedValue(existingUser);
 
       const result = await service.findOrCreate({
-        auth0Id: "auth0|123",
         email: "test@example.com",
         name: "Test User",
       });
@@ -65,17 +63,15 @@ describe("userService", () => {
     it("should create new user if not found", async () => {
       const newUser: User = {
         id: "456",
-        auth0_id: "auth0|456",
         email: "new@example.com",
         name: "New User",
         created_at: new Date(),
       };
 
-      mocks.findByAuth0Id.mockResolvedValue(null);
+      mocks.findByEmail.mockResolvedValue(null);
       mocks.create.mockResolvedValue(newUser);
 
       const result = await service.findOrCreate({
-        auth0Id: "auth0|456",
         email: "new@example.com",
         name: "New User",
       });
@@ -86,7 +82,6 @@ describe("userService", () => {
         name: "New User",
       });
       expect(mocks.create).toHaveBeenCalledWith({
-        auth0Id: "auth0|456",
         email: "new@example.com",
         name: "New User",
       });

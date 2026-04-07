@@ -3,13 +3,11 @@ import { config } from "./config";
 import { logger } from "./utils/logger";
 import { corsMiddleware } from "./middleware/cors";
 import { requestLogger } from "./middleware/request-logger";
-import { requireAuth } from "./middleware/require-auth";
-import { extractUser } from "./middleware/extract-user";
+import { injectUser, ensureDefaultUser } from "./middleware/inject-user";
 import { rateLimiter } from "./middleware/rate-limiter";
 import { errorHandler } from "./middleware/error-handler";
 import healthRoutes from "./routes/health";
 import docsRoutes from "./routes/docs";
-import authRoutes from "./routes/auth";
 import settingsRoutes from "./routes/settings";
 import workflowRoutes from "./routes/workflows";
 import eventsRoutes from "./routes/events";
@@ -26,17 +24,15 @@ app.use(requestLogger);
 app.use(healthRoutes);
 app.use(docsRoutes);
 
-// Authenticated routes
-const authenticatedRouter = express.Router();
-authenticatedRouter.use(requireAuth);
-authenticatedRouter.use(extractUser);
-authenticatedRouter.use(rateLimiter);
-authenticatedRouter.use(authRoutes);
-authenticatedRouter.use(settingsRoutes);
-authenticatedRouter.use(workflowRoutes);
-authenticatedRouter.use(eventsRoutes);
+// API routes
+const apiRouter = express.Router();
+apiRouter.use(injectUser);
+apiRouter.use(rateLimiter);
+apiRouter.use(settingsRoutes);
+apiRouter.use(workflowRoutes);
+apiRouter.use(eventsRoutes);
 
-app.use("/v1", authenticatedRouter);
+app.use("/v1", apiRouter);
 
 // 404 for unmatched routes
 app.use((_req, res) => {
@@ -54,6 +50,7 @@ setEngineFunctions({
 });
 
 const server = app.listen(port, async () => {
+  await ensureDefaultUser();
   logger.info(`Server running on port ${port}`);
   await engine.start();
 });

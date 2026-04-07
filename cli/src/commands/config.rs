@@ -1,16 +1,10 @@
 use crate::api::{ApiClient, Settings, SettingsInput};
 use crate::commands::Context;
-use crate::config::Credentials;
 use crate::output::{print_error, print_json, print_success, print_table};
 
 pub async fn run_set(ctx: &Context, key: &str, value: &str) -> anyhow::Result<()> {
     if key != "github-token" {
         anyhow::bail!("Unknown config key '{}'. Supported: github-token", key);
-    }
-
-    let creds = Credentials::load()?;
-    if !creds.is_valid() {
-        anyhow::bail!("Not authenticated. Run 'tmpo login' first.");
     }
 
     let client = ApiClient::new(&ctx.base_url);
@@ -25,11 +19,6 @@ pub async fn run_set(ctx: &Context, key: &str, value: &str) -> anyhow::Result<()
 }
 
 pub async fn run_get(ctx: &Context) -> anyhow::Result<()> {
-    let creds = Credentials::load()?;
-    if !creds.is_valid() {
-        anyhow::bail!("Not authenticated. Run 'tmpo login' first.");
-    }
-
     let client = ApiClient::new(&ctx.base_url);
     let settings: Settings = client.get("/v1/settings").await?;
 

@@ -1,4 +1,3 @@
-import { useAuth, withAuthenticationRequired } from "../hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { useApi } from "../hooks/useApi";
 import { Link, useNavigate } from "react-router-dom";
@@ -46,8 +45,7 @@ function formatAge(dateStr: string): string {
   return "just now";
 }
 
-function DashboardPage() {
-  const { user, logout } = useAuth();
+export default function DashboardPage() {
   const api = useApi();
   const navigate = useNavigate();
 
@@ -106,19 +104,6 @@ function DashboardPage() {
               >
                 Settings
               </Link>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">{user?.email}</span>
-              <button
-                onClick={() =>
-                  logout({
-                    logoutParams: { returnTo: window.location.origin },
-                  })
-                }
-                className="text-sm text-gray-600 hover:text-gray-900 cursor-pointer"
-              >
-                Sign Out
-              </button>
             </div>
           </div>
         </div>
@@ -224,11 +209,3 @@ function DashboardPage() {
     </div>
   );
 }
-
-export default withAuthenticationRequired(DashboardPage, {
-  onRedirecting: () => (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
-    </div>
-  ),
-});

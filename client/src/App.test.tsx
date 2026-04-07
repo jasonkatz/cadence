@@ -1,46 +1,35 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { useAuth0 } from "@auth0/auth0-react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 
-jest.mock("@auth0/auth0-react");
+jest.mock("./hooks/useApi", () => ({
+  useApi: () => ({
+    get: jest.fn().mockResolvedValue({ workflows: [], total: 0 }),
+  }),
+}));
 
-const mockUseAuth0 = useAuth0 as jest.MockedFunction<typeof useAuth0>;
+function renderApp(route = "/") {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[route]}>
+        <App />
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+}
 
 describe("App", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
+  it("redirects / to dashboard", () => {
+    renderApp("/");
+    expect(screen.getByText("Workflows")).toBeInTheDocument();
   });
 
-  it("shows loading spinner when auth is loading", () => {
-    mockUseAuth0.mockReturnValue({
-      isLoading: true,
-      isAuthenticated: false,
-    } as ReturnType<typeof useAuth0>);
-
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>
-    );
-
-    expect(screen.getByRole("status")).toBeInTheDocument();
-  });
-
-  it("shows home page when auth is loaded and user is not authenticated", () => {
-    mockUseAuth0.mockReturnValue({
-      isLoading: false,
-      isAuthenticated: false,
-      loginWithRedirect: jest.fn(),
-    } as unknown as ReturnType<typeof useAuth0>);
-
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>
-    );
-
+  it("renders dashboard at /dashboard", () => {
+    renderApp("/dashboard");
     expect(screen.getByText("Tmpo")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
   });
 });

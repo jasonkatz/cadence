@@ -1,14 +1,8 @@
 use crate::api::{ApiClient, WorkflowList};
 use crate::commands::Context;
-use crate::config::Credentials;
 use crate::output::{print_json, print_table};
 
 pub async fn run(ctx: &Context, status: Option<&str>) -> anyhow::Result<()> {
-    let creds = Credentials::load()?;
-    if !creds.is_valid() {
-        anyhow::bail!("Not authenticated. Run 'tmpo login' first.");
-    }
-
     let client = ApiClient::new(&ctx.base_url);
 
     let mut path = "/v1/workflows".to_string();
