@@ -13,7 +13,7 @@ export interface E2eVerifierResult {
   response: string;
 }
 
-const E2E_VERIFY_TIMEOUT_MS = 300_000; // 5 minutes
+const E2E_VERIFY_TIMEOUT_MS = 1_800_000; // 30 minutes
 
 export async function runE2eVerifier(
   workflow: Workflow,

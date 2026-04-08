@@ -38,7 +38,7 @@ export function createRunDao(q: QueryFn) {
       `SELECT * FROM runs WHERE ${where} ORDER BY created_at ASC`,
       values
     );
-    return result.rows;
+    return result.rows.map(parseNumericFields);
   },
 
   async create(data: {
@@ -54,7 +54,7 @@ export function createRunDao(q: QueryFn) {
        RETURNING *`,
       [data.stepId, data.workflowId, data.agentRole, data.iteration, data.prompt]
     );
-    return result.rows[0];
+    return parseNumericFields(result.rows[0]);
   },
 
   async updateResult(
@@ -66,8 +66,16 @@ export function createRunDao(q: QueryFn) {
        WHERE id = $4 RETURNING *`,
       [data.response, data.exitCode, data.durationSecs, runId]
     );
-    return result.rows[0] || null;
+    return result.rows[0] ? parseNumericFields(result.rows[0]) : null;
   },
+  };
+}
+
+/** node-pg returns numeric columns as strings; coerce to number for JSON consumers */
+function parseNumericFields(run: Run): Run {
+  return {
+    ...run,
+    duration_secs: run.duration_secs != null ? Number(run.duration_secs) : null,
   };
 }
 

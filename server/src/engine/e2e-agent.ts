@@ -13,7 +13,7 @@ export interface E2eResult {
   response: string;
 }
 
-const E2E_TIMEOUT_MS = 600_000; // 10 minutes
+const E2E_TIMEOUT_MS = 2_400_000; // 40 minutes
 
 export async function runE2eAgent(
   workflow: Workflow,

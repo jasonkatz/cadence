@@ -28,13 +28,13 @@ export const JOB_TYPES = {
 } as const;
 
 const EXPIRE_MINUTES: Record<string, number> = {
-  [JOB_TYPES.plan]: 10,
-  [JOB_TYPES.dev]: 15,
-  [JOB_TYPES.ci]: 5,
-  [JOB_TYPES.review]: 10,
-  [JOB_TYPES.e2e]: 15,
-  [JOB_TYPES["e2e-verify"]]: 10,
-  [JOB_TYPES.signoff]: 5,
+  [JOB_TYPES.plan]: 35,
+  [JOB_TYPES.dev]: 65,
+  [JOB_TYPES.ci]: 20,
+  [JOB_TYPES.review]: 35,
+  [JOB_TYPES.e2e]: 45,
+  [JOB_TYPES["e2e-verify"]]: 35,
+  [JOB_TYPES.signoff]: 10,
 };
 
 const TERMINAL_STATUSES = ["complete", "failed", "cancelled"];

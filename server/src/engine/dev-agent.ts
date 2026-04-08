@@ -11,7 +11,7 @@ export interface DevResult {
   response: string;
 }
 
-const DEV_TIMEOUT_MS = 600_000; // 10 minutes
+const DEV_TIMEOUT_MS = 3_600_000; // 60 minutes
 
 export async function runDevAgent(
   workflow: Workflow,

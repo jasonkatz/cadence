@@ -13,7 +13,7 @@ export interface ReviewResult {
   response: string;
 }
 
-const REVIEW_TIMEOUT_MS = 300_000; // 5 minutes
+const REVIEW_TIMEOUT_MS = 1_800_000; // 30 minutes
 
 export async function runReviewAgent(
   workflow: Workflow,

@@ -14,7 +14,7 @@ export interface PlannerResult {
   response: string;
 }
 
-const PLANNER_TIMEOUT_MS = 300_000; // 5 minutes
+const PLANNER_TIMEOUT_MS = 1_800_000; // 30 minutes
 
 export async function runPlannerAgent(
   workflow: Workflow,
