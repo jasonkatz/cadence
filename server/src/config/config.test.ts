@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "bun:test";
 import { loadTmpoConfig, saveTmpoConfig } from "./index";
-import { writeFileSync, rmSync, existsSync, mkdirSync } from "fs";
+import { readFileSync, writeFileSync, rmSync, existsSync, mkdirSync } from "fs";
 import path from "path";
 import os from "os";
 
@@ -12,7 +12,6 @@ let originalConfig: string | null = null;
 
 function backupConfig() {
   if (existsSync(CONFIG_PATH)) {
-    const { readFileSync } = require("fs");
     originalConfig = readFileSync(CONFIG_PATH, "utf-8");
   } else {
     originalConfig = null;
