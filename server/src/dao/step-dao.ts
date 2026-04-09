@@ -17,12 +17,11 @@ export function createStepDao(q: QueryFn) {
     workflowId: string,
     filters?: { iteration?: number }
   ): Promise<Step[]> {
-    const conditions = ["workflow_id = $1"];
+    const conditions = ["workflow_id = ?"];
     const values: unknown[] = [workflowId];
-    let paramIndex = 2;
 
     if (filters?.iteration !== undefined) {
-      conditions.push(`iteration = $${paramIndex++}`);
+      conditions.push("iteration = ?");
       values.push(filters.iteration);
     }
 
@@ -38,10 +37,10 @@ export function createStepDao(q: QueryFn) {
     workflowId: string
   ): Promise<Step[]> {
     const result = await q<Step>(
-      `SELECT * FROM steps WHERE workflow_id = $1
-       AND iteration = (SELECT MAX(iteration) FROM steps WHERE workflow_id = $1)
+      `SELECT * FROM steps WHERE workflow_id = ?
+       AND iteration = (SELECT MAX(iteration) FROM steps WHERE workflow_id = ?)
        ORDER BY type ASC`,
-      [workflowId]
+      [workflowId, workflowId]
     );
     return result.rows;
   },
@@ -53,10 +52,7 @@ export function createStepDao(q: QueryFn) {
     const allTypes = ["plan", "dev", "ci", "review", "e2e", "e2e_verify", "signoff"];
     const types = iteration > 0 ? allTypes.filter((t) => t !== "plan") : allTypes;
     const values = types
-      .map(
-        (_, i) =>
-          `($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`
-      )
+      .map(() => "(?, ?, ?)")
       .join(", ");
     const params = types.flatMap((type) => [workflowId, iteration, type]);
 
@@ -74,24 +70,23 @@ export function createStepDao(q: QueryFn) {
     status: string,
     detail?: string
   ): Promise<Step | null> {
-    const setClauses = ["status = $1"];
+    const setClauses = ["status = ?"];
     const params: unknown[] = [status];
-    let idx = 2;
 
     if (status === "running") {
-      setClauses.push(`started_at = now()`);
+      setClauses.push("started_at = datetime('now')");
     }
     if (status === "passed" || status === "failed") {
-      setClauses.push(`finished_at = now()`);
+      setClauses.push("finished_at = datetime('now')");
     }
     if (detail !== undefined) {
-      setClauses.push(`detail = $${idx++}`);
+      setClauses.push("detail = ?");
       params.push(detail);
     }
 
     params.push(stepId);
     const result = await q<Step>(
-      `UPDATE steps SET ${setClauses.join(", ")} WHERE id = $${idx} RETURNING *`,
+      `UPDATE steps SET ${setClauses.join(", ")} WHERE id = ? RETURNING *`,
       params
     );
     return result.rows[0] || null;

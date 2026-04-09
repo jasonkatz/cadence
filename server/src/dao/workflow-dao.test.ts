@@ -16,7 +16,6 @@ function makeWorkflow(overrides?: Partial<Workflow>): Workflow {
     iteration: 0,
     max_iters: 8,
     error: null,
-    created_by: "user-1",
     created_at: new Date(),
     updated_at: new Date(),
     ...overrides,
@@ -104,11 +103,11 @@ describe("workflowDao", () => {
         repo: "acme/app",
         branch: "tmpo/abc",
         maxIters: 0,
-        createdBy: "user-1",
       });
 
       const params = mockQuery.mock.calls[0][1] as unknown[];
-      expect(params[4]).toBe(0);
+      // maxIters is at index 5 (id, task, repo, branch, requirements, maxIters, created_at, updated_at)
+      expect(params[5]).toBe(0);
     });
   });
 

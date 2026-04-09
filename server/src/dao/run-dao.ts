@@ -6,8 +6,7 @@ export interface Run {
   workflow_id: string;
   agent_role: string;
   iteration: number;
-  prompt: string;
-  response: string | null;
+  log_path: string | null;
   exit_code: number | null;
   duration_secs: number | null;
   created_at: Date;
@@ -19,17 +18,16 @@ export function createRunDao(q: QueryFn) {
     workflowId: string,
     filters?: { agentRole?: string; iteration?: number }
   ): Promise<Run[]> {
-    const conditions = ["workflow_id = $1"];
+    const conditions = ["workflow_id = ?"];
     const values: unknown[] = [workflowId];
-    let paramIndex = 2;
 
     if (filters?.agentRole) {
-      conditions.push(`agent_role = $${paramIndex++}`);
+      conditions.push("agent_role = ?");
       values.push(filters.agentRole);
     }
 
     if (filters?.iteration !== undefined) {
-      conditions.push(`iteration = $${paramIndex++}`);
+      conditions.push("iteration = ?");
       values.push(filters.iteration);
     }
 
@@ -46,32 +44,31 @@ export function createRunDao(q: QueryFn) {
     workflowId: string;
     agentRole: string;
     iteration: number;
-    prompt: string;
+    logPath: string;
   }): Promise<Run> {
     const result = await q<Run>(
-      `INSERT INTO runs (step_id, workflow_id, agent_role, iteration, prompt)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO runs (step_id, workflow_id, agent_role, iteration, log_path)
+       VALUES (?, ?, ?, ?, ?)
        RETURNING *`,
-      [data.stepId, data.workflowId, data.agentRole, data.iteration, data.prompt]
+      [data.stepId, data.workflowId, data.agentRole, data.iteration, data.logPath]
     );
     return parseNumericFields(result.rows[0]);
   },
 
   async updateResult(
     runId: string,
-    data: { response: string; exitCode: number; durationSecs: number }
+    data: { exitCode: number; durationSecs: number }
   ): Promise<Run | null> {
     const result = await q<Run>(
-      `UPDATE runs SET response = $1, exit_code = $2, duration_secs = $3
-       WHERE id = $4 RETURNING *`,
-      [data.response, data.exitCode, data.durationSecs, runId]
+      `UPDATE runs SET exit_code = ?, duration_secs = ?
+       WHERE id = ? RETURNING *`,
+      [data.exitCode, data.durationSecs, runId]
     );
     return result.rows[0] ? parseNumericFields(result.rows[0]) : null;
   },
   };
 }
 
-/** node-pg returns numeric columns as strings; coerce to number for JSON consumers */
 function parseNumericFields(run: Run): Run {
   return {
     ...run,

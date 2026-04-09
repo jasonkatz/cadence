@@ -14,7 +14,6 @@ function makeWorkflow(overrides?: Partial<Workflow>): Workflow {
     iteration: 0,
     max_iters: 8,
     error: null,
-    created_by: "user-1",
     created_at: new Date(),
     updated_at: new Date(),
     ...overrides,

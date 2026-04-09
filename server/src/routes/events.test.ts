@@ -16,7 +16,6 @@ function makeWorkflow(overrides?: Partial<Workflow>): Workflow {
     iteration: 0,
     max_iters: 8,
     error: null,
-    created_by: "user-1",
     created_at: new Date(),
     updated_at: new Date(),
     ...overrides,
@@ -50,12 +49,12 @@ function makeFakeRes() {
 function makeDeps() {
   let subscribedHandler: ((event: WorkflowEvent) => void) | null = null;
 
-  const mockFindByIdAndUser = mock((_id: string, _userId: string) =>
+  const mockFindById = mock((_id: string) =>
     Promise.resolve(null as Workflow | null)
   );
 
   const deps: EventsHandlerDeps = {
-    workflowDao: { findByIdAndUser: mockFindByIdAndUser },
+    workflowDao: { findById: mockFindById },
     eventBus: {
       subscribe: (_workflowId: string, handler: (event: WorkflowEvent) => void) => {
         subscribedHandler = handler;
@@ -66,21 +65,21 @@ function makeDeps() {
 
   return {
     deps,
-    mockFindByIdAndUser,
+    mockFindById,
     emitEvent: (event: WorkflowEvent) => subscribedHandler?.(event),
   };
 }
 
 describe("events route handler", () => {
   it("should return 404 if workflow not found", async () => {
-    const { deps, mockFindByIdAndUser } = makeDeps();
-    mockFindByIdAndUser.mockResolvedValue(null);
+    const { deps, mockFindById } = makeDeps();
+    mockFindById.mockResolvedValue(null);
     const res = makeFakeRes();
     const next = mock(() => {});
 
     const handler = createEventsHandler(deps);
     await handler(
-      { params: { id: "wf-1" }, user: { id: "user-1" } } as unknown as Parameters<typeof handler>[0],
+      { params: { id: "wf-1" } } as unknown as Parameters<typeof handler>[0],
       res as unknown as Parameters<typeof handler>[1],
       next
     );
@@ -89,14 +88,14 @@ describe("events route handler", () => {
   });
 
   it("should set SSE headers for valid workflow", async () => {
-    const { deps, mockFindByIdAndUser } = makeDeps();
-    mockFindByIdAndUser.mockResolvedValue(makeWorkflow());
+    const { deps, mockFindById } = makeDeps();
+    mockFindById.mockResolvedValue(makeWorkflow());
     const res = makeFakeRes();
     const next = mock(() => {});
 
     const handler = createEventsHandler(deps);
     await handler(
-      { params: { id: "wf-1" }, user: { id: "user-1" } } as unknown as Parameters<typeof handler>[0],
+      { params: { id: "wf-1" } } as unknown as Parameters<typeof handler>[0],
       res as unknown as Parameters<typeof handler>[1],
       next
     );
@@ -107,14 +106,14 @@ describe("events route handler", () => {
   });
 
   it("should write SSE-formatted events when emitted", async () => {
-    const { deps, mockFindByIdAndUser, emitEvent } = makeDeps();
-    mockFindByIdAndUser.mockResolvedValue(makeWorkflow());
+    const { deps, mockFindById, emitEvent } = makeDeps();
+    mockFindById.mockResolvedValue(makeWorkflow());
     const res = makeFakeRes();
     const next = mock(() => {});
 
     const handler = createEventsHandler(deps);
     await handler(
-      { params: { id: "wf-1" }, user: { id: "user-1" } } as unknown as Parameters<typeof handler>[0],
+      { params: { id: "wf-1" } } as unknown as Parameters<typeof handler>[0],
       res as unknown as Parameters<typeof handler>[1],
       next
     );
@@ -131,14 +130,14 @@ describe("events route handler", () => {
   });
 
   it("should close connection on workflow:completed event", async () => {
-    const { deps, mockFindByIdAndUser, emitEvent } = makeDeps();
-    mockFindByIdAndUser.mockResolvedValue(makeWorkflow());
+    const { deps, mockFindById, emitEvent } = makeDeps();
+    mockFindById.mockResolvedValue(makeWorkflow());
     const res = makeFakeRes();
     const next = mock(() => {});
 
     const handler = createEventsHandler(deps);
     await handler(
-      { params: { id: "wf-1" }, user: { id: "user-1" } } as unknown as Parameters<typeof handler>[0],
+      { params: { id: "wf-1" } } as unknown as Parameters<typeof handler>[0],
       res as unknown as Parameters<typeof handler>[1],
       next
     );

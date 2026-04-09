@@ -1,14 +1,15 @@
 import { Router } from "express";
-import { pool } from "../db";
+import { getDatabase } from "../db";
 import type { components } from "../types/api";
 
 type HealthResponse = components["schemas"]["HealthResponse"];
 
 const router = Router();
 
-router.get("/health", async (_req, res) => {
+router.get("/health", (_req, res) => {
   try {
-    await pool.query("SELECT 1");
+    const db = getDatabase();
+    db.prepare("SELECT 1").get();
     const response: HealthResponse = {
       status: "healthy",
       timestamp: new Date().toISOString(),

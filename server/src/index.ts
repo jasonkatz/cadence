@@ -3,7 +3,6 @@ import { config } from "./config";
 import { logger } from "./utils/logger";
 import { corsMiddleware } from "./middleware/cors";
 import { requestLogger } from "./middleware/request-logger";
-import { injectUser, ensureDefaultUser } from "./middleware/inject-user";
 import { rateLimiter } from "./middleware/rate-limiter";
 import { errorHandler } from "./middleware/error-handler";
 import healthRoutes from "./routes/health";
@@ -26,7 +25,6 @@ app.use(docsRoutes);
 
 // API routes
 const apiRouter = express.Router();
-apiRouter.use(injectUser);
 apiRouter.use(rateLimiter);
 apiRouter.use(settingsRoutes);
 apiRouter.use(workflowRoutes);
@@ -43,14 +41,13 @@ app.use(errorHandler);
 
 const port = parseInt(config.PORT, 10);
 
-const engine = createEngine(config.DATABASE_URL);
+const engine = createEngine();
 setEngineFunctions({
   enqueueWorkflow: engine.enqueueWorkflow.bind(engine),
   cancelWorkflowJobs: engine.cancelWorkflowJobs.bind(engine),
 });
 
 const server = app.listen(port, async () => {
-  await ensureDefaultUser();
   logger.info(`Server running on port ${port}`);
   await engine.start();
 });

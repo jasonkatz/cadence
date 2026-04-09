@@ -5,7 +5,7 @@ const router = Router();
 
 router.post("/workflows", async (req, res, next) => {
   try {
-    const workflow = await workflowService.create(req.user!.id, req.body);
+    const workflow = await workflowService.create(req.body);
     res.status(201).json(workflow);
   } catch (err) {
     next(err);
@@ -18,7 +18,7 @@ router.get("/workflows", async (req, res, next) => {
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
     const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : undefined;
 
-    const result = await workflowService.list(req.user!.id, {
+    const result = await workflowService.list({
       status,
       limit,
       offset,
@@ -32,7 +32,7 @@ router.get("/workflows", async (req, res, next) => {
 
 router.get("/workflows/:id", async (req, res, next) => {
   try {
-    const workflow = await workflowService.getById(req.params.id, req.user!.id);
+    const workflow = await workflowService.getById(req.params.id);
     res.json(workflow);
   } catch (err) {
     next(err);
@@ -47,7 +47,6 @@ router.get("/workflows/:id/steps", async (req, res, next) => {
 
     const steps = await workflowService.getSteps(
       req.params.id,
-      req.user!.id,
       { iteration }
     );
     res.json(steps);
@@ -65,7 +64,6 @@ router.get("/workflows/:id/runs", async (req, res, next) => {
 
     const runs = await workflowService.getRuns(
       req.params.id,
-      req.user!.id,
       { agentRole, iteration }
     );
     res.json(runs);
@@ -76,7 +74,7 @@ router.get("/workflows/:id/runs", async (req, res, next) => {
 
 router.post("/workflows/:id/cancel", async (req, res, next) => {
   try {
-    const workflow = await workflowService.cancel(req.params.id, req.user!.id);
+    const workflow = await workflowService.cancel(req.params.id);
     res.json(workflow);
   } catch (err) {
     next(err);

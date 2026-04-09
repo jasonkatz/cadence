@@ -4,7 +4,7 @@ import { eventBus as defaultEventBus, WorkflowEvent } from "../events/event-bus"
 import { NotFoundError } from "../middleware/error-handler";
 
 export interface EventsHandlerDeps {
-  workflowDao: Pick<typeof defaultWorkflowDao, "findByIdAndUser">;
+  workflowDao: Pick<typeof defaultWorkflowDao, "findById">;
   eventBus: Pick<typeof defaultEventBus, "subscribe" | "unsubscribe">;
 }
 
@@ -16,10 +16,7 @@ const defaultDeps: EventsHandlerDeps = {
 export function createEventsHandler(deps: EventsHandlerDeps = defaultDeps) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const workflow = await deps.workflowDao.findByIdAndUser(
-        req.params.id,
-        req.user!.id
-      );
+      const workflow = await deps.workflowDao.findById(req.params.id);
       if (!workflow) {
         throw new NotFoundError("Workflow not found");
       }

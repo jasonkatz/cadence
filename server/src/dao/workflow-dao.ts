@@ -12,13 +12,11 @@ export interface Workflow {
   iteration: number;
   max_iters: number;
   error: string | null;
-  created_by: string;
   created_at: Date;
   updated_at: Date;
 }
 
 export interface WorkflowListParams {
-  userId: string;
   status?: string;
   limit?: number;
   offset?: number;
@@ -32,19 +30,22 @@ export function createWorkflowDao(q: QueryFn) {
     branch: string;
     requirements?: string;
     maxIters?: number;
-    createdBy: string;
   }): Promise<Workflow> {
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
     const result = await q<Workflow>(
-      `INSERT INTO workflows (task, repo, branch, requirements, max_iters, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO workflows (id, task, repo, branch, requirements, max_iters, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING *`,
       [
+        id,
         data.task,
         data.repo,
         data.branch,
         data.requirements || null,
         data.maxIters ?? 8,
-        data.createdBy,
+        now,
+        now,
       ]
     );
     return result.rows[0];
@@ -52,46 +53,34 @@ export function createWorkflowDao(q: QueryFn) {
 
   async findById(id: string): Promise<Workflow | null> {
     const result = await q<Workflow>(
-      "SELECT * FROM workflows WHERE id = $1",
+      "SELECT * FROM workflows WHERE id = ?",
       [id]
     );
     return result.rows[0] || null;
   },
 
-  async findByIdAndUser(
-    id: string,
-    userId: string
-  ): Promise<Workflow | null> {
-    const result = await q<Workflow>(
-      "SELECT * FROM workflows WHERE id = $1 AND created_by = $2",
-      [id, userId]
-    );
-    return result.rows[0] || null;
-  },
-
   async list(params: WorkflowListParams): Promise<{ workflows: Workflow[]; total: number }> {
-    const conditions = ["created_by = $1"];
-    const values: unknown[] = [params.userId];
-    let paramIndex = 2;
+    const conditions: string[] = [];
+    const values: unknown[] = [];
 
     if (params.status) {
-      conditions.push(`status = $${paramIndex++}`);
+      conditions.push("status = ?");
       values.push(params.status);
     }
 
-    const where = conditions.join(" AND ");
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
-    const countResult = await q<{ count: string }>(
-      `SELECT COUNT(*) FROM workflows WHERE ${where}`,
+    const countResult = await q<{ count: number }>(
+      `SELECT COUNT(*) as count FROM workflows ${where}`,
       values
     );
-    const total = parseInt(countResult.rows[0].count, 10);
+    const total = Number(countResult.rows[0].count);
 
     const limit = params.limit || 50;
     const offset = params.offset || 0;
 
     const result = await q<Workflow>(
-      `SELECT * FROM workflows WHERE ${where} ORDER BY created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
+      `SELECT * FROM workflows ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
       [...values, limit, offset]
     );
 
@@ -103,7 +92,7 @@ export function createWorkflowDao(q: QueryFn) {
     status: string
   ): Promise<Workflow | null> {
     const result = await q<Workflow>(
-      `UPDATE workflows SET status = $1, updated_at = now() WHERE id = $2 RETURNING *`,
+      `UPDATE workflows SET status = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`,
       [status, id]
     );
     return result.rows[0] || null;
@@ -121,7 +110,7 @@ export function createWorkflowDao(q: QueryFn) {
     proposal: string
   ): Promise<Workflow | null> {
     const result = await q<Workflow>(
-      `UPDATE workflows SET proposal = $1, updated_at = now() WHERE id = $2 RETURNING *`,
+      `UPDATE workflows SET proposal = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`,
       [proposal, id]
     );
     return result.rows[0] || null;
@@ -132,7 +121,7 @@ export function createWorkflowDao(q: QueryFn) {
     error: string
   ): Promise<Workflow | null> {
     const result = await q<Workflow>(
-      `UPDATE workflows SET status = 'failed', error = $1, updated_at = now() WHERE id = $2 RETURNING *`,
+      `UPDATE workflows SET status = 'failed', error = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`,
       [error, id]
     );
     return result.rows[0] || null;
@@ -143,7 +132,7 @@ export function createWorkflowDao(q: QueryFn) {
     iteration: number
   ): Promise<Workflow | null> {
     const result = await q<Workflow>(
-      `UPDATE workflows SET iteration = $1, updated_at = now() WHERE id = $2 RETURNING *`,
+      `UPDATE workflows SET iteration = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`,
       [iteration, id]
     );
     return result.rows[0] || null;
@@ -154,7 +143,7 @@ export function createWorkflowDao(q: QueryFn) {
     prNumber: number
   ): Promise<Workflow | null> {
     const result = await q<Workflow>(
-      `UPDATE workflows SET pr_number = $1, updated_at = now() WHERE id = $2 RETURNING *`,
+      `UPDATE workflows SET pr_number = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`,
       [prNumber, id]
     );
     return result.rows[0] || null;
