@@ -23,7 +23,6 @@ pub struct Workflow {
     pub iteration: i64,
     pub max_iters: i64,
     pub error: Option<String>,
-    pub created_by: String,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -86,8 +85,7 @@ pub struct Run {
     pub workflow_id: String,
     pub agent_role: String,
     pub iteration: i64,
-    pub prompt: String,
-    pub response: Option<String>,
+    pub log_path: Option<String>,
     pub exit_code: Option<i64>,
     pub duration_secs: Option<f64>,
     pub created_at: String,

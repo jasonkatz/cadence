@@ -1,5 +1,3 @@
-import { PgBoss } from "pg-boss";
-import { pool } from "../db";
 import { workflowDao as defaultWorkflowDao, Workflow } from "../dao/workflow-dao";
 import { stepDao as defaultStepDao } from "../dao/step-dao";
 import { runDao as defaultRunDao } from "../dao/run-dao";
@@ -12,7 +10,9 @@ import { runE2eAgent as defaultRunE2eAgent } from "./e2e-agent";
 import { runE2eVerifier as defaultRunE2eVerifier } from "./e2e-verifier";
 import { githubService as defaultGithubService } from "../services/github-service";
 import { generatePrDescription as defaultGeneratePrDescription } from "./pr-description";
-import { settingsService as defaultSettingsService } from "../services/settings-service";
+import { configService as defaultConfigService } from "../services/config-service";
+import { createRunLogger } from "../utils/run-logger";
+import { JobQueue, type JobData } from "./job-queue";
 import { logger } from "../utils/logger";
 
 // --- Job types ---
@@ -39,15 +39,8 @@ const EXPIRE_MINUTES: Record<string, number> = {
 
 const TERMINAL_STATUSES = ["complete", "failed", "cancelled"];
 
-// --- Job data ---
-
-export interface JobData {
-  workflowId: string;
-  iteration: number;
-  stepIds: Record<string, string>;
-  failureContext?: string;
-  e2eEvidence?: string;
-}
+// Re-export JobData from job-queue
+export type { JobData } from "./job-queue";
 
 // --- Dependencies ---
 
@@ -67,12 +60,13 @@ export interface EngineDeps {
   generatePrDescription: typeof defaultGeneratePrDescription;
   runE2eAgent: typeof defaultRunE2eAgent;
   runE2eVerifier: typeof defaultRunE2eVerifier;
-  getDecryptedToken: (userId: string) => Promise<string>;
+  getDecryptedToken: () => string;
   enqueueJob: (name: string, data: JobData) => Promise<string | null>;
 }
 
 async function defaultGetPrDiff(token: string, repo: string, prNumber: number): Promise<string> {
-  const res = await fetch(
+  // Try the diff media type first
+  const diffRes = await fetch(
     `https://api.github.com/repos/${repo}/pulls/${prNumber}`,
     {
       headers: {
@@ -82,10 +76,32 @@ async function defaultGetPrDiff(token: string, repo: string, prNumber: number): 
       },
     }
   );
-  if (!res.ok) {
-    throw new Error(`Failed to fetch PR diff (${res.status})`);
+  if (diffRes.ok) {
+    return diffRes.text();
   }
-  return res.text();
+
+  // Fallback: use the files endpoint and reconstruct from patches
+  const filesRes = await fetch(
+    `https://api.github.com/repos/${repo}/pulls/${prNumber}/files?per_page=100`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    }
+  );
+  if (!filesRes.ok) {
+    throw new Error(`Failed to fetch PR files (${filesRes.status})`);
+  }
+  const files = (await filesRes.json()) as Array<{
+    filename: string;
+    status: string;
+    patch?: string;
+  }>;
+  return files
+    .map((f) => `--- a/${f.filename}\n+++ b/${f.filename}\n${f.patch || ""}`)
+    .join("\n");
 }
 
 async function defaultGetHeadSha(token: string, repo: string, branch: string): Promise<string> {
@@ -313,23 +329,27 @@ export async function handlePlan(data: JobData, deps: EngineDeps): Promise<void>
     data: { status: "running" },
   });
 
-  const githubToken = await deps.getDecryptedToken(workflow.created_by);
+  const githubToken = deps.getDecryptedToken();
 
   await startStep(stepId, "plan", workflowId, deps);
 
+  const runLogger = createRunLogger(workflowId, "plan", workflow.iteration);
   const planPrompt = `Plan task: ${workflow.task} for repo ${workflow.repo}`;
+  runLogger.append("prompt", { text: planPrompt });
+
   const planRun = await deps.runDao.create({
     stepId,
     workflowId,
     agentRole: "planner",
     iteration: workflow.iteration,
-    prompt: planPrompt,
+    logPath: runLogger.logPath,
   });
 
   const planResult = await deps.runPlannerAgent(workflow, githubToken);
 
+  runLogger.append("response", { text: planResult.response, exitCode: planResult.exitCode });
+
   await deps.runDao.updateResult(planRun.id, {
-    response: planResult.response,
     exitCode: planResult.exitCode,
     durationSecs: planResult.durationSecs,
   });
@@ -364,27 +384,30 @@ export async function handleDev(data: JobData, deps: EngineDeps): Promise<void> 
     });
   }
 
-  const githubToken = await deps.getDecryptedToken(workflow.created_by);
+  const githubToken = deps.getDecryptedToken();
 
   await startStep(stepId, "dev", workflowId, deps);
 
+  const runLogger = createRunLogger(workflowId, "dev", data.iteration);
   let devPrompt = `Implement task: ${workflow.task} for repo ${workflow.repo} using proposal`;
   if (failureContext) {
     devPrompt += `\n\n## Previous Iteration Failure\n\n${failureContext}`;
   }
+  runLogger.append("prompt", { text: devPrompt });
 
   const devRun = await deps.runDao.create({
     stepId,
     workflowId,
     agentRole: "dev",
     iteration: data.iteration,
-    prompt: devPrompt,
+    logPath: runLogger.logPath,
   });
 
   const devResult = await deps.runDevAgent(workflow, githubToken);
 
+  runLogger.append("response", { text: devResult.response, exitCode: devResult.exitCode });
+
   await deps.runDao.updateResult(devRun.id, {
-    response: devResult.response,
     exitCode: devResult.exitCode,
     durationSecs: devResult.durationSecs,
   });
@@ -439,11 +462,19 @@ export async function handleCi(data: JobData, deps: EngineDeps): Promise<void> {
   const workflow = await deps.workflowDao.findById(workflowId);
   if (!workflow || TERMINAL_STATUSES.includes(workflow.status)) return;
 
-  const githubToken = await deps.getDecryptedToken(workflow.created_by);
+  const githubToken = deps.getDecryptedToken();
 
   await startStep(stepId, "ci", workflowId, deps);
 
-  const headSha = await deps.getHeadSha(githubToken, workflow.repo, workflow.branch);
+  let headSha: string;
+  try {
+    headSha = await deps.getHeadSha(githubToken, workflow.repo, workflow.branch);
+  } catch (error) {
+    const detail = `Failed to fetch head SHA (${error instanceof Error ? error.message : String(error)})`;
+    await failStep(stepId, "ci", workflowId, detail, deps);
+    await regress(workflow, detail, deps);
+    return;
+  }
   const ciResult = await deps.pollCiStatus(workflow.repo, headSha, githubToken);
 
   if (ciResult.status === "failed") {
@@ -464,25 +495,37 @@ export async function handleReview(data: JobData, deps: EngineDeps): Promise<voi
   const workflow = await deps.workflowDao.findById(workflowId);
   if (!workflow || TERMINAL_STATUSES.includes(workflow.status)) return;
 
-  const githubToken = await deps.getDecryptedToken(workflow.created_by);
+  const githubToken = deps.getDecryptedToken();
 
   await startStep(stepId, "review", workflowId, deps);
 
-  const prDiff = await deps.getPrDiff(githubToken, workflow.repo, workflow.pr_number!);
+  let prDiff: string;
+  try {
+    prDiff = await deps.getPrDiff(githubToken, workflow.repo, workflow.pr_number!);
+  } catch (error) {
+    const detail = `Failed to fetch PR diff (${error instanceof Error ? error.message : String(error)})`;
+    await failStep(stepId, "review", workflowId, detail, deps);
+    await regress(workflow, detail, deps);
+    return;
+  }
 
+  const runLogger = createRunLogger(workflowId, "review", data.iteration);
   const reviewPrompt = `Review PR #${workflow.pr_number} for task: ${workflow.task}`;
+  runLogger.append("prompt", { text: reviewPrompt });
+
   const reviewRun = await deps.runDao.create({
     stepId,
     workflowId,
     agentRole: "reviewer",
     iteration: data.iteration,
-    prompt: reviewPrompt,
+    logPath: runLogger.logPath,
   });
 
   const reviewResult = await deps.runReviewAgent(workflow, prDiff, githubToken);
 
+  runLogger.append("response", { text: reviewResult.verdict, exitCode: reviewResult.exitCode });
+
   await deps.runDao.updateResult(reviewRun.id, {
-    response: reviewResult.verdict,
     exitCode: reviewResult.exitCode,
     durationSecs: reviewResult.durationSecs,
   });
@@ -510,23 +553,27 @@ export async function handleE2e(data: JobData, deps: EngineDeps): Promise<void> 
   const workflow = await deps.workflowDao.findById(workflowId);
   if (!workflow || TERMINAL_STATUSES.includes(workflow.status)) return;
 
-  const githubToken = await deps.getDecryptedToken(workflow.created_by);
+  const githubToken = deps.getDecryptedToken();
 
   await startStep(stepId, "e2e", workflowId, deps);
 
+  const runLogger = createRunLogger(workflowId, "e2e", data.iteration);
   const e2ePrompt = `Run E2E tests for task: ${workflow.task} on repo ${workflow.repo}`;
+  runLogger.append("prompt", { text: e2ePrompt });
+
   const e2eRun = await deps.runDao.create({
     stepId,
     workflowId,
     agentRole: "e2e",
     iteration: data.iteration,
-    prompt: e2ePrompt,
+    logPath: runLogger.logPath,
   });
 
   const e2eResult = await deps.runE2eAgent(workflow, githubToken);
 
+  runLogger.append("response", { text: e2eResult.response, exitCode: e2eResult.exitCode });
+
   await deps.runDao.updateResult(e2eRun.id, {
-    response: e2eResult.response,
     exitCode: e2eResult.exitCode,
     durationSecs: e2eResult.durationSecs,
   });
@@ -557,23 +604,27 @@ export async function handleE2eVerify(data: JobData, deps: EngineDeps): Promise<
   const workflow = await deps.workflowDao.findById(workflowId);
   if (!workflow || TERMINAL_STATUSES.includes(workflow.status)) return;
 
-  const githubToken = await deps.getDecryptedToken(workflow.created_by);
+  const githubToken = deps.getDecryptedToken();
 
   await startStep(stepId, "e2e_verify", workflowId, deps);
 
+  const runLogger = createRunLogger(workflowId, "e2e_verify", data.iteration);
   const verifyPrompt = `Verify E2E evidence for task: ${workflow.task}`;
+  runLogger.append("prompt", { text: verifyPrompt });
+
   const verifyRun = await deps.runDao.create({
     stepId,
     workflowId,
     agentRole: "e2e_verifier",
     iteration: data.iteration,
-    prompt: verifyPrompt,
+    logPath: runLogger.logPath,
   });
 
   const verifyResult = await deps.runE2eVerifier(workflow, data.e2eEvidence || "", githubToken);
 
+  runLogger.append("response", { text: verifyResult.verdict, exitCode: verifyResult.exitCode });
+
   await deps.runDao.updateResult(verifyRun.id, {
-    response: verifyResult.verdict,
     exitCode: verifyResult.exitCode,
     durationSecs: verifyResult.durationSecs,
   });
@@ -623,14 +674,12 @@ const HANDLERS: Record<string, (data: JobData, deps: EngineDeps) => Promise<void
   [JOB_TYPES.signoff]: handleSignoff,
 };
 
-export function createEngine(connectionString: string, overrideDeps?: Partial<EngineDeps>) {
-  const boss = new PgBoss(connectionString);
+export function createEngine(overrideDeps?: Partial<EngineDeps>) {
+  const jobQueue = new JobQueue();
 
   const enqueueJob = async (name: string, data: JobData): Promise<string | null> => {
-    return boss.send(name, data, {
-      expireInMinutes: EXPIRE_MINUTES[name] ?? 10,
-      retryLimit: 0,
-    });
+    const expireMs = (EXPIRE_MINUTES[name] ?? 10) * 60 * 1000;
+    return jobQueue.enqueue(name, data, expireMs);
   };
 
   const deps: EngineDeps = {
@@ -649,49 +698,51 @@ export function createEngine(connectionString: string, overrideDeps?: Partial<En
     generatePrDescription: defaultGeneratePrDescription,
     runE2eAgent: defaultRunE2eAgent,
     runE2eVerifier: defaultRunE2eVerifier,
-    getDecryptedToken: defaultSettingsService.getDecryptedToken.bind(defaultSettingsService),
+    getDecryptedToken: defaultConfigService.getDecryptedToken.bind(defaultConfigService),
     enqueueJob,
     ...overrideDeps,
   };
 
+  // Register handlers with the job queue
+  for (const [jobType, handler] of Object.entries(HANDLERS)) {
+    jobQueue.registerHandler(jobType, async (data: JobData) => {
+      try {
+        await handler(data, deps);
+      } catch (error) {
+        logger.error("Job handler error", {
+          jobType,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        const stepType = jobType.replace("tmpo.", "").replace("-", "_");
+        const stepId = data.stepIds[stepType];
+        if (stepId) {
+          const detail = error instanceof Error ? error.message : String(error);
+          await failStep(stepId, stepType, data.workflowId, detail, deps).catch(() => {});
+        }
+        throw error;
+      }
+    });
+  }
+
   return {
     async start(): Promise<void> {
-      await boss.start();
-      logger.info("pg-boss started, registering workflow handlers");
-
-      for (const jobType of Object.keys(HANDLERS)) {
-        await boss.createQueue(jobType);
-      }
-
-      for (const [jobType, handler] of Object.entries(HANDLERS)) {
-        await boss.work(jobType, async (jobs) => {
-          const job = (jobs as unknown as { id: string; data: JobData }[])[0];
-          logger.info("Processing job", { jobType, jobId: job.id, workflowId: job.data.workflowId });
-          try {
-            await handler(job.data, deps);
-          } catch (error) {
-            logger.error("Job handler error", {
-              jobType,
-              jobId: job.id,
-              error: error instanceof Error ? error.message : String(error),
-            });
-            // Update step status to failed if possible
-            const stepType = jobType.replace("tmpo.", "").replace("-", "_");
-            const stepId = job.data.stepIds[stepType];
-            if (stepId) {
-              const detail = error instanceof Error ? error.message : String(error);
-              await failStep(stepId, stepType, job.data.workflowId, detail, deps).catch(() => {});
-            }
-            throw error;
+      // Recovery: mark incomplete steps as failed for any running workflows
+      const runningWorkflows = await deps.workflowDao.list({ status: "running" });
+      for (const wf of runningWorkflows.workflows) {
+        const steps = await deps.stepDao.findByWorkflowId(wf.id);
+        for (const step of steps) {
+          if (step.status === "running") {
+            await deps.stepDao.updateStatus(step.id, "failed", "Recovered on startup: step was incomplete");
           }
-        });
+        }
       }
 
-      logger.info("Workflow engine started (pg-boss)");
+      jobQueue.start();
+      logger.info("Workflow engine started (in-process job queue)");
     },
 
     async stop(): Promise<void> {
-      await boss.stop();
+      jobQueue.stop();
       logger.info("Workflow engine stopped");
     },
 
@@ -700,20 +751,10 @@ export function createEngine(connectionString: string, overrideDeps?: Partial<En
     },
 
     async cancelWorkflowJobs(workflowId: string): Promise<void> {
-      // Query pg-boss job table for created/active jobs belonging to this workflow
-      const result = await pool.query<{ id: string; name: string }>(
-        `SELECT id, name FROM pgboss.job
-         WHERE name LIKE 'tmpo.%'
-           AND state IN ('created', 'active')
-           AND data->>'workflowId' = $1`,
-        [workflowId]
-      );
-      for (const row of result.rows) {
-        await boss.cancel(row.name, row.id);
-      }
+      jobQueue.cancel(workflowId);
     },
 
-    boss,
+    jobQueue,
     deps,
   };
 }

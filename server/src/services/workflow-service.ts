@@ -1,7 +1,7 @@
 import { workflowDao as defaultWorkflowDao, Workflow } from "../dao/workflow-dao";
 import { stepDao as defaultStepDao, Step } from "../dao/step-dao";
 import { runDao as defaultRunDao, Run } from "../dao/run-dao";
-import { settingsService as defaultSettingsService } from "./settings-service";
+import { configService as defaultConfigService } from "./config-service";
 import {
   ValidationError,
   NotFoundError,
@@ -33,10 +33,10 @@ export interface WorkflowDetail extends Workflow {
 }
 
 export interface WorkflowServiceDeps {
-  workflowDao: Pick<typeof defaultWorkflowDao, "create" | "findByIdAndUser" | "list" | "updateStatus">;
+  workflowDao: Pick<typeof defaultWorkflowDao, "create" | "findById" | "list" | "updateStatus">;
   stepDao: Pick<typeof defaultStepDao, "findByWorkflowId" | "findLatestIterationByWorkflowId">;
   runDao: Pick<typeof defaultRunDao, "findByWorkflowId">;
-  settingsService: Pick<typeof defaultSettingsService, "hasGithubToken">;
+  configService: Pick<typeof defaultConfigService, "hasGithubToken">;
   enqueueWorkflow: (workflowId: string, iteration: number) => Promise<void>;
   cancelWorkflowJobs: (workflowId: string) => Promise<void>;
 }
@@ -61,7 +61,7 @@ const defaultDeps: WorkflowServiceDeps = {
   workflowDao: defaultWorkflowDao,
   stepDao: defaultStepDao,
   runDao: defaultRunDao,
-  settingsService: defaultSettingsService,
+  configService: defaultConfigService,
   enqueueWorkflow: (...args) => engineEnqueue(...args),
   cancelWorkflowJobs: (...args) => engineCancel(...args),
 };
@@ -71,7 +71,6 @@ const TERMINAL_STATUSES = ["complete", "failed", "cancelled"];
 export function createWorkflowService(deps: WorkflowServiceDeps = defaultDeps) {
   return {
     async create(
-      userId: string,
       input: WorkflowCreateInput
     ): Promise<Workflow> {
       if (!input.task) {
@@ -81,7 +80,7 @@ export function createWorkflowService(deps: WorkflowServiceDeps = defaultDeps) {
         throw new ValidationError("repo is required");
       }
 
-      const hasToken = await deps.settingsService.hasGithubToken(userId);
+      const hasToken = deps.configService.hasGithubToken();
       if (!hasToken) {
         throw new ValidationError(
           "GitHub token not configured. Use PUT /v1/settings to set your token."
@@ -97,7 +96,6 @@ export function createWorkflowService(deps: WorkflowServiceDeps = defaultDeps) {
         branch,
         requirements: input.requirements,
         maxIters: input.max_iters,
-        createdBy: userId,
       });
 
       await deps.enqueueWorkflow(workflow.id, workflow.iteration);
@@ -106,11 +104,9 @@ export function createWorkflowService(deps: WorkflowServiceDeps = defaultDeps) {
     },
 
     async list(
-      userId: string,
       params: { status?: string; limit?: number; offset?: number }
     ): Promise<{ workflows: WorkflowListItem[]; total: number }> {
       const { workflows, total } = await deps.workflowDao.list({
-        userId,
         status: params.status,
         limit: params.limit,
         offset: params.offset,
@@ -133,10 +129,9 @@ export function createWorkflowService(deps: WorkflowServiceDeps = defaultDeps) {
     },
 
     async getById(
-      workflowId: string,
-      userId: string
+      workflowId: string
     ): Promise<WorkflowDetail> {
-      const workflow = await deps.workflowDao.findByIdAndUser(workflowId, userId);
+      const workflow = await deps.workflowDao.findById(workflowId);
       if (!workflow) {
         throw new NotFoundError("Workflow not found");
       }
@@ -148,10 +143,9 @@ export function createWorkflowService(deps: WorkflowServiceDeps = defaultDeps) {
 
     async getSteps(
       workflowId: string,
-      userId: string,
       filters?: { iteration?: number }
     ): Promise<Step[]> {
-      const workflow = await deps.workflowDao.findByIdAndUser(workflowId, userId);
+      const workflow = await deps.workflowDao.findById(workflowId);
       if (!workflow) {
         throw new NotFoundError("Workflow not found");
       }
@@ -161,10 +155,9 @@ export function createWorkflowService(deps: WorkflowServiceDeps = defaultDeps) {
 
     async getRuns(
       workflowId: string,
-      userId: string,
       filters?: { agentRole?: string; iteration?: number }
     ): Promise<Run[]> {
-      const workflow = await deps.workflowDao.findByIdAndUser(workflowId, userId);
+      const workflow = await deps.workflowDao.findById(workflowId);
       if (!workflow) {
         throw new NotFoundError("Workflow not found");
       }
@@ -173,10 +166,9 @@ export function createWorkflowService(deps: WorkflowServiceDeps = defaultDeps) {
     },
 
     async cancel(
-      workflowId: string,
-      userId: string
+      workflowId: string
     ): Promise<Workflow> {
-      const workflow = await deps.workflowDao.findByIdAndUser(workflowId, userId);
+      const workflow = await deps.workflowDao.findById(workflowId);
       if (!workflow) {
         throw new NotFoundError("Workflow not found");
       }

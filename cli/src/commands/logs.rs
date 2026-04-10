@@ -54,10 +54,9 @@ pub async fn run(
                     .map(|d| format!("{:.1}s", d))
                     .unwrap_or_else(|| "-".to_string())
             );
-            println!("\nPrompt:\n{}", run.prompt);
             println!(
-                "\nResponse:\n{}",
-                run.response.as_deref().unwrap_or("-")
+                "Log Path:   {}",
+                run.log_path.as_deref().unwrap_or("-")
             );
             println!();
         }
@@ -75,26 +74,16 @@ pub async fn run(
                     r.duration_secs
                         .map(|d| format!("{:.1}s", d))
                         .unwrap_or_else(|| "-".to_string()),
-                    truncate(&r.prompt, 200),
-                    truncate(r.response.as_deref().unwrap_or("-"), 200),
+                    r.log_path.as_deref().unwrap_or("-").to_string(),
                 ]
             })
             .collect();
 
         print_table(
-            &["Timestamp", "Agent", "Iter", "Exit", "Duration", "Prompt", "Response"],
+            &["Timestamp", "Agent", "Iter", "Exit", "Duration", "Log Path"],
             rows,
         );
     }
 
     Ok(())
-}
-
-fn truncate(s: &str, max: usize) -> String {
-    let first_line = s.lines().next().unwrap_or(s);
-    if first_line.len() > max {
-        format!("{}...", &first_line[..max])
-    } else {
-        first_line.to_string()
-    }
 }

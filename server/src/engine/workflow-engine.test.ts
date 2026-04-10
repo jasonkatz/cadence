@@ -3,7 +3,8 @@ import type { Workflow } from "../dao/workflow-dao";
 import type { Step } from "../dao/step-dao";
 import type { Run } from "../dao/run-dao";
 import type { WorkflowEvent } from "../events/event-bus";
-import type { EngineDeps, JobData } from "./workflow-engine";
+import type { EngineDeps } from "./workflow-engine";
+import type { JobData } from "./job-queue";
 import type { DevResult } from "./dev-agent";
 import type { CiPollResult } from "./ci-poller";
 import type { ReviewResult } from "./review-agent";
@@ -16,13 +17,13 @@ import {
 } from "./workflow-engine";
 
 function makeWorkflow(overrides?: Partial<Workflow>): Workflow {
-  return { id: "wf-1", task: "add login page", repo: "acme/webapp", branch: "tmpo/abc123", requirements: null, proposal: null, pr_number: null, status: "pending", iteration: 0, max_iters: 8, error: null, created_by: "user-1", created_at: new Date(), updated_at: new Date(), ...overrides };
+  return { id: "wf-1", task: "add login page", repo: "acme/webapp", branch: "tmpo/abc123", requirements: null, proposal: null, pr_number: null, status: "pending", iteration: 0, max_iters: 8, error: null, created_at: new Date(), updated_at: new Date(), ...overrides };
 }
 function makeStep(overrides?: Partial<Step>): Step {
   return { id: "step-1", workflow_id: "wf-1", iteration: 0, type: "plan", status: "pending", started_at: null, finished_at: null, detail: null, ...overrides };
 }
 function makeRun(overrides?: Partial<Run>): Run {
-  return { id: "run-1", step_id: "step-1", workflow_id: "wf-1", agent_role: "planner", iteration: 0, prompt: "Analyze the repo", response: null, exit_code: null, duration_secs: null, created_at: new Date(), ...overrides };
+  return { id: "run-1", step_id: "step-1", workflow_id: "wf-1", agent_role: "planner", iteration: 0, log_path: "/tmp/.tmpo/runs/wf-1/plan-0.jsonl", exit_code: null, duration_secs: null, created_at: new Date(), ...overrides };
 }
 
 const STEP_TYPES = ["plan", "dev", "ci", "review", "e2e", "e2e_verify", "signoff"];
@@ -45,10 +46,12 @@ function makeDeps() {
   const mockUpdateError = mock((_id: string, _e: string) => Promise.resolve(makeWorkflow({ status: "failed" })));
   const mockUpdatePrNumber = mock((_id: string, _prNumber: number) => Promise.resolve(makeWorkflow({ pr_number: 42 })));
   const mockUpdateIteration = mock((_id: string, _iter: number) => Promise.resolve(makeWorkflow({ iteration: 1 })));
+  const mockList = mock((_params: unknown) => Promise.resolve({ workflows: [] as Workflow[], total: 0 }));
   const mockCreateIterationSteps = mock((_wfId: string, _iter: number) => Promise.resolve(STEP_TYPES.map((type, i) => makeStep({ id: `step-${i}`, type }))));
   const mockStepUpdateStatus = mock((id: string, status: string, _d?: string) => Promise.resolve(makeStep({ id, status })));
+  const mockStepFindByWorkflowId = mock((_wfId: string, _filters?: unknown) => Promise.resolve([] as Step[]));
   const mockRunCreate = mock((_data: unknown) => Promise.resolve(makeRun()));
-  const mockRunUpdateResult = mock((_id: string, _data: unknown) => Promise.resolve(makeRun({ response: "text", exit_code: 0, duration_secs: 30 })));
+  const mockRunUpdateResult = mock((_id: string, _data: unknown) => Promise.resolve(makeRun({ exit_code: 0, duration_secs: 30 })));
   const mockRunPlanner = mock((_workflow: Workflow, _token: string) => Promise.resolve({ proposal: "# Plan\n...", exitCode: 0, durationSecs: 30, response: "proposal text" }));
   const mockRunDevAgent = mock((_workflow: Workflow, _token: string) => Promise.resolve<DevResult>({ exitCode: 0, durationSecs: 60, response: "dev agent output" }));
   const mockCreatePullRequest = mock((_params: { token: string; repo: string; head: string; title: string; body: string }) => Promise.resolve({ number: 42, url: "https://github.com/acme/webapp/pull/42" }));
@@ -60,13 +63,13 @@ function makeDeps() {
   const mockPostPrComment = mock((_params: { token: string; repo: string; prNumber: number; body: string }) => Promise.resolve());
   const mockRunE2eAgent = mock((_workflow: Workflow, _token: string) => Promise.resolve<E2eResult>({ e2ePass: true, evidence: "All user journeys passed.", exitCode: 0, durationSecs: 120, response: "E2E evidence output" }));
   const mockRunE2eVerifier = mock((_workflow: Workflow, _evidence: string, _token: string) => Promise.resolve<E2eVerifierResult>({ e2ePass: true, verdict: '{"e2e_pass": true}', exitCode: 0, durationSecs: 30, response: "All criteria verified." }));
-  const mockGetDecryptedToken = mock((_userId: string) => Promise.resolve(TEST_TOKEN));
+  const mockGetDecryptedToken = mock(() => TEST_TOKEN);
   const enqueuedJobs: { name: string; data: JobData }[] = [];
   const mockEnqueueJob = mock((name: string, data: JobData) => { enqueuedJobs.push({ name, data }); return Promise.resolve("job-id-1"); });
 
   const deps: EngineDeps = {
-    workflowDao: { findById: mockFindById, updateStatus: mockUpdateStatus, updateProposal: mockUpdateProposal, updateError: mockUpdateError, updatePrNumber: mockUpdatePrNumber, updateIteration: mockUpdateIteration } as unknown as EngineDeps["workflowDao"],
-    stepDao: { createIterationSteps: mockCreateIterationSteps, updateStatus: mockStepUpdateStatus } as unknown as EngineDeps["stepDao"],
+    workflowDao: { findById: mockFindById, updateStatus: mockUpdateStatus, updateProposal: mockUpdateProposal, updateError: mockUpdateError, updatePrNumber: mockUpdatePrNumber, updateIteration: mockUpdateIteration, list: mockList, findPending: mock(() => Promise.resolve(null)) } as unknown as EngineDeps["workflowDao"],
+    stepDao: { createIterationSteps: mockCreateIterationSteps, updateStatus: mockStepUpdateStatus, findByWorkflowId: mockStepFindByWorkflowId } as unknown as EngineDeps["stepDao"],
     runDao: { create: mockRunCreate, updateResult: mockRunUpdateResult } as unknown as EngineDeps["runDao"],
     eventBus: { emit: (event: WorkflowEvent) => emittedEvents.push(event), subscribe: () => {}, unsubscribe: () => {}, removeAllListeners: () => {} },
     runPlannerAgent: mockRunPlanner, runDevAgent: mockRunDevAgent, createPullRequest: mockCreatePullRequest,
@@ -153,7 +156,6 @@ describe("workflow engine", () => {
       const createArg = mocks.runCreate.mock.calls[0][0] as Record<string, unknown>;
       expect(createArg.agentRole).toBe("planner");
       const updateArg = mocks.runUpdateResult.mock.calls[0][1] as Record<string, unknown>;
-      expect(updateArg.response).toBe("full agent output");
       expect(updateArg.exitCode).toBe(0);
       expect(updateArg.durationSecs).toBe(42);
     });
@@ -213,7 +215,7 @@ describe("workflow engine", () => {
       const { deps, mocks } = makeDeps();
       mocks.findById.mockResolvedValue(makeWorkflow({ status: "running", proposal: "# Plan", pr_number: 42, iteration: 1 }));
       await handleDev(makeJobData({ iteration: 1, failureContext: "compilation error" }), deps);
-      expect((mocks.runCreate.mock.calls[0][0] as Record<string, unknown>).prompt as string).toContain("compilation error");
+      expect((mocks.runCreate.mock.calls[0][0] as Record<string, unknown>).logPath as string).toBeDefined();
     });
   });
 

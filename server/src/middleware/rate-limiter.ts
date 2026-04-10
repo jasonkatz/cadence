@@ -7,7 +7,7 @@ export const rateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => {
-    return req.user?.id || req.ip || "anonymous";
+    return req.ip || "anonymous";
   },
   message: { error: "Too many requests, please try again later" },
 });

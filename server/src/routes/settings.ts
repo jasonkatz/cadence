@@ -1,26 +1,26 @@
 import { Router } from "express";
-import { settingsService } from "../services/settings-service";
+import { configService } from "../services/config-service";
 import { ValidationError } from "../middleware/error-handler";
 
 const router = Router();
 
-router.get("/settings", async (req, res, next) => {
+router.get("/settings", (_req, res, next) => {
   try {
-    const settings = await settingsService.get(req.user!.id);
+    const settings = configService.get();
     res.json(settings);
   } catch (err) {
     next(err);
   }
 });
 
-router.put("/settings", async (req, res, next) => {
+router.put("/settings", (req, res, next) => {
   try {
     const { github_token } = req.body;
     if (!github_token || typeof github_token !== "string") {
       throw new ValidationError("github_token is required");
     }
 
-    const settings = await settingsService.update(req.user!.id, github_token);
+    const settings = configService.update({ github_token });
     res.json(settings);
   } catch (err) {
     next(err);

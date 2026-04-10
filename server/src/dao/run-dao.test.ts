@@ -10,8 +10,7 @@ function makeRun(overrides?: Partial<Run>): Run {
     workflow_id: "wf-1",
     agent_role: "planner",
     iteration: 0,
-    prompt: "Analyze the repository",
-    response: null,
+    log_path: "/tmp/.tmpo/runs/wf-1/plan-0.jsonl",
     exit_code: null,
     duration_secs: null,
     created_at: new Date(),
@@ -46,11 +45,12 @@ describe("runDao", () => {
         workflowId: "wf-1",
         agentRole: "planner",
         iteration: 0,
-        prompt: "Analyze the repository",
+        logPath: "/tmp/.tmpo/runs/wf-1/plan-0.jsonl",
       });
 
       expect(result.id).toBe("run-1");
       expect(result.agent_role).toBe("planner");
+      expect(result.log_path).toContain("plan-0.jsonl");
       expect(mockQuery).toHaveBeenCalledTimes(1);
       const sql = mockQuery.mock.calls[0][0] as string;
       expect(sql).toContain("INSERT INTO runs");
@@ -58,22 +58,19 @@ describe("runDao", () => {
   });
 
   describe("updateResult", () => {
-    it("should update run with response, exit_code, and duration", async () => {
+    it("should update run with exit_code and duration", async () => {
       const updated = makeRun({
-        response: "Here is the proposal...",
         exit_code: 0,
         duration_secs: 45,
       });
       mockQuery.mockResolvedValue({ rows: [updated] });
 
       const result = await runDao.updateResult("run-1", {
-        response: "Here is the proposal...",
         exitCode: 0,
         durationSecs: 45,
       });
 
       expect(result).not.toBeNull();
-      expect(result!.response).toBe("Here is the proposal...");
       expect(result!.exit_code).toBe(0);
       expect(result!.duration_secs).toBe(45);
     });
@@ -82,7 +79,6 @@ describe("runDao", () => {
       mockQuery.mockResolvedValue({ rows: [] });
 
       const result = await runDao.updateResult("nonexistent", {
-        response: "test",
         exitCode: 1,
         durationSecs: 5,
       });

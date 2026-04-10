@@ -27,7 +27,6 @@ export function requestLogger(req: Request, res: Response, next: NextFunction) {
     logger.info(`${req.method} ${req.path} ${res.statusCode}`, {
       requestId,
       duration: `${duration}ms`,
-      userId: req.user?.id,
     });
   });
 
