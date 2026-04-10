@@ -27,11 +27,30 @@ export async function runDevAgent(
       timeoutMs: 120_000,
     });
 
-    // Create and checkout the working branch
-    await execCommand("git", ["checkout", "-b", workflow.branch], {
-      cwd: workDir,
-      timeoutMs: 10_000,
-    });
+    // Checkout the working branch (create if new, track if exists on remote)
+    const remoteBranch = `origin/${workflow.branch}`;
+    const lsResult = await execCommand(
+      "git",
+      ["ls-remote", "--heads", "origin", workflow.branch],
+      { cwd: workDir, timeoutMs: 30_000 }
+    );
+    if (lsResult.stdout.trim()) {
+      // Branch exists on remote — fetch and checkout
+      await execCommand("git", ["fetch", "origin", workflow.branch], {
+        cwd: workDir,
+        timeoutMs: 30_000,
+      });
+      await execCommand("git", ["checkout", "-b", workflow.branch, remoteBranch], {
+        cwd: workDir,
+        timeoutMs: 10_000,
+      });
+    } else {
+      // New branch
+      await execCommand("git", ["checkout", "-b", workflow.branch], {
+        cwd: workDir,
+        timeoutMs: 10_000,
+      });
+    }
 
     // Configure git for commits
     await execCommand("git", ["config", "user.email", "tmpo@bot.dev"], {
