@@ -1,4 +1,5 @@
-use crate::api::{ApiClient, Settings, SettingsInput};
+use crate::api::{Settings, SettingsInput};
+use crate::commands::daemon::ensure_daemon;
 use crate::commands::Context;
 use crate::output::{print_error, print_json, print_success, print_table};
 
@@ -7,7 +8,8 @@ pub async fn run_set(ctx: &Context, key: &str, value: &str) -> anyhow::Result<()
         anyhow::bail!("Unknown config key '{}'. Supported: github-token", key);
     }
 
-    let client = ApiClient::new(&ctx.base_url);
+    ensure_daemon(ctx).await?;
+    let client = ctx.client();
     let input = SettingsInput {
         github_token: value.to_string(),
     };
@@ -19,7 +21,8 @@ pub async fn run_set(ctx: &Context, key: &str, value: &str) -> anyhow::Result<()
 }
 
 pub async fn run_get(ctx: &Context) -> anyhow::Result<()> {
-    let client = ApiClient::new(&ctx.base_url);
+    ensure_daemon(ctx).await?;
+    let client = ctx.client();
     let settings: Settings = client.get("/v1/settings").await?;
 
     if ctx.json {

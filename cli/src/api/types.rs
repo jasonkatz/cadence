@@ -1,6 +1,29 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct DaemonStatus {
+    pub pid: i64,
+    pub uptime: i64,
+    #[serde(rename = "socketPath")]
+    pub socket_path: String,
+    #[serde(rename = "tcpPort")]
+    pub tcp_port: Option<u16>,
+    #[serde(rename = "activeWorkflows")]
+    pub active_workflows: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EnableTcpRequest {
+    pub port: u16,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EnableTcpResponse {
+    pub ok: bool,
+    pub port: u16,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Settings {
     pub github_token: Option<String>,
 }

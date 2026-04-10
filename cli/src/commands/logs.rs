@@ -1,4 +1,5 @@
-use crate::api::{ApiClient, Run};
+use crate::api::Run;
+use crate::commands::daemon::ensure_daemon;
 use crate::commands::Context;
 use crate::output::{print_json, print_table};
 
@@ -9,7 +10,8 @@ pub async fn run(
     iteration: Option<i64>,
     full: bool,
 ) -> anyhow::Result<()> {
-    let client = ApiClient::new(&ctx.base_url);
+    ensure_daemon(ctx).await?;
+    let client = ctx.client();
 
     let mut path = format!("/v1/workflows/{}/runs", workflow_id);
     let mut params: Vec<String> = Vec::new();

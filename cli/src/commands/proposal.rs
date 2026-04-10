@@ -1,9 +1,11 @@
-use crate::api::{ApiClient, WorkflowDetail};
+use crate::api::WorkflowDetail;
+use crate::commands::daemon::ensure_daemon;
 use crate::commands::Context;
 use crate::output::{print_error, print_json};
 
 pub async fn run(ctx: &Context, workflow_id: &str) -> anyhow::Result<()> {
-    let client = ApiClient::new(&ctx.base_url);
+    ensure_daemon(ctx).await?;
+    let client = ctx.client();
     let detail: WorkflowDetail = client
         .get(&format!("/v1/workflows/{}", workflow_id))
         .await?;

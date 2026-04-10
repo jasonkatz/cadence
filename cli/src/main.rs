@@ -1,20 +1,41 @@
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 use std::process;
 
 mod api;
 mod commands;
 mod output;
 
-use commands::{cancel, config as config_cmd, list, logs, proposal, run, status};
+use commands::{cancel, config as config_cmd, daemon, list, logs, proposal, run, status, ui};
+
+fn default_socket_path() -> PathBuf {
+    let home = dirs_home();
+    home.join(".tmpo").join("tmpod.sock")
+}
+
+fn dirs_home() -> PathBuf {
+    #[cfg(unix)]
+    {
+        std::env::var("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("/tmp"))
+    }
+    #[cfg(not(unix))]
+    {
+        std::env::var("USERPROFILE")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("."))
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "tmpo")]
 #[command(about = "Command-line interface for Tmpo")]
 #[command(version)]
 struct Cli {
-    /// Use localhost:8080 instead of production
-    #[arg(short, long, global = true)]
-    local: bool,
+    /// Connect to a remote daemon at the given URL instead of the local socket
+    #[arg(long, global = true)]
+    remote: Option<String>,
 
     /// Output structured JSON (for scripting and automation)
     #[arg(long, global = true)]
@@ -84,6 +105,17 @@ enum Commands {
         #[arg(long)]
         full: bool,
     },
+    /// Manage the daemon
+    Daemon {
+        #[command(subcommand)]
+        action: DaemonAction,
+    },
+    /// Open the web dashboard
+    Ui {
+        /// TCP port for the web UI
+        #[arg(short, long, default_value = "7070")]
+        port: u16,
+    },
 }
 
 #[derive(Subcommand)]
@@ -99,23 +131,25 @@ enum ConfigAction {
     Get,
 }
 
+#[derive(Subcommand)]
+enum DaemonAction {
+    /// Start the daemon in the background
+    Start,
+    /// Gracefully stop the daemon
+    Stop,
+    /// Show daemon status
+    Status,
+}
+
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
 
-    const API_URL: &str = match option_env!("API_URL") {
-        Some(v) => v,
-        None => "https://api.yourapp.com",
-    };
-
-    let base_url = if cli.local {
-        "http://localhost:8080".to_string()
-    } else {
-        API_URL.to_string()
-    };
+    let socket_path = default_socket_path();
 
     let ctx = commands::Context {
-        base_url,
+        socket_path,
+        remote_url: cli.remote.clone(),
         json: cli.json,
     };
 
@@ -151,6 +185,12 @@ async fn main() {
             iteration,
             full,
         } => logs::run(&ctx, &workflow_id, agent.as_deref(), iteration, full).await,
+        Commands::Daemon { action } => match action {
+            DaemonAction::Start => daemon::run_start(&ctx).await,
+            DaemonAction::Stop => daemon::run_stop(&ctx).await,
+            DaemonAction::Status => daemon::run_status(&ctx).await,
+        },
+        Commands::Ui { port } => ui::run(&ctx, port).await,
     };
 
     if let Err(err) = result {
