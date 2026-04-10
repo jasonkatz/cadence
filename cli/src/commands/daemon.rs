@@ -1,7 +1,8 @@
 use crate::api::{ApiClient, DaemonStatus};
 use crate::commands::Context;
 use crate::output::{print_json, print_success, print_table};
-use std::path::Path;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 
@@ -20,8 +21,8 @@ pub async fn run_start(ctx: &Context) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    // Find the tmpod binary: check PATH, then common locations
-    let tmpod = find_tmpod()?;
+    // Find the tmpod binary: check PATH, local installs, or download
+    let tmpod = find_or_download_tmpod().await?;
 
     // Spawn detached daemon process
     let _child = std::process::Command::new(&tmpod)
@@ -157,8 +158,26 @@ pub async fn ensure_daemon(ctx: &Context) -> anyhow::Result<()> {
     run_start(ctx).await
 }
 
-fn find_tmpod() -> anyhow::Result<String> {
-    // Check if tmpod is on PATH
+const GITHUB_REPO: &str = "jasonkatz/tmpo";
+
+fn tmpo_bin_dir() -> PathBuf {
+    dirs_home().join(".tmpo").join("bin")
+}
+
+fn dirs_home() -> PathBuf {
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/tmp"))
+}
+
+fn find_tmpod() -> Option<String> {
+    // 1. Check ~/.tmpo/bin/tmpod (managed install location)
+    let managed = tmpo_bin_dir().join("tmpod");
+    if managed.exists() {
+        return Some(managed.to_string_lossy().to_string());
+    }
+
+    // 2. Check PATH
     if let Ok(output) = std::process::Command::new("which")
         .arg("tmpod")
         .output()
@@ -166,27 +185,92 @@ fn find_tmpod() -> anyhow::Result<String> {
         if output.status.success() {
             let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !path.is_empty() {
-                return Ok(path);
+                return Some(path);
             }
         }
     }
 
-    // Check common locations
-    let candidates = [
-        "/usr/local/bin/tmpod",
-        // Look relative to the CLI binary
-    ];
-    for candidate in &candidates {
+    // 3. Check common locations
+    for candidate in &["/usr/local/bin/tmpod"] {
         if Path::new(candidate).exists() {
-            return Ok(candidate.to_string());
+            return Some(candidate.to_string());
         }
     }
 
-    // Last resort: try to run via bun in the server directory
-    // This is useful during development
-    anyhow::bail!(
-        "Could not find 'tmpod' binary. Install it with 'make install' or add it to your PATH."
-    )
+    None
+}
+
+fn platform_target() -> anyhow::Result<&'static str> {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("macos", "aarch64") => Ok("darwin-arm64"),
+        ("macos", "x86_64") => Ok("darwin-x64"),
+        ("linux", "x86_64") => Ok("linux-x64"),
+        ("linux", "aarch64") => Ok("linux-arm64"),
+        (os, arch) => anyhow::bail!("Unsupported platform: {os}-{arch}"),
+    }
+}
+
+async fn download_tmpod() -> anyhow::Result<String> {
+    let target = platform_target()?;
+    let asset_name = format!("tmpod-{target}");
+    let url = format!(
+        "https://github.com/{GITHUB_REPO}/releases/latest/download/{asset_name}"
+    );
+
+    eprint!(
+        "tmpod not found. Download from GitHub Releases?\n  {url}\n\n[Y/n] "
+    );
+    std::io::stderr().flush()?;
+
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input)?;
+    let answer = input.trim().to_lowercase();
+    if !answer.is_empty() && answer != "y" && answer != "yes" {
+        anyhow::bail!("Cancelled. Install tmpod manually: https://github.com/{GITHUB_REPO}/releases");
+    }
+
+    eprintln!("Downloading {asset_name}...");
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("User-Agent", "tmpo-cli")
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        anyhow::bail!(
+            "Download failed (HTTP {}). Check https://github.com/{}/releases for available binaries.",
+            resp.status(),
+            GITHUB_REPO
+        );
+    }
+
+    let bytes = resp.bytes().await?;
+
+    let bin_dir = tmpo_bin_dir();
+    std::fs::create_dir_all(&bin_dir)?;
+
+    let dest = bin_dir.join("tmpod");
+    std::fs::write(&dest, &bytes)?;
+
+    // Make executable
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755))?;
+    }
+
+    let dest_str = dest.to_string_lossy().to_string();
+    eprintln!("Installed tmpod to {dest_str}");
+    Ok(dest_str)
+}
+
+async fn find_or_download_tmpod() -> anyhow::Result<String> {
+    if let Some(path) = find_tmpod() {
+        return Ok(path);
+    }
+    download_tmpod().await
 }
 
 fn format_uptime(seconds: i64) -> String {
