@@ -43,7 +43,19 @@ The CLI talks to a local daemon over a Unix socket. The daemon manages all state
 
 ## Install
 
-### Option A: From source (recommended for contributors)
+### Option A: One-line install
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/jasonkatz/tmpo/main/install.sh | bash
+```
+
+Downloads both `tmpo` (CLI) and `tmpod` (daemon) from the latest GitHub Release to `~/.tmpo/bin/` and offers to add it to your PATH. Override the install directory with `TMPO_INSTALL_DIR`:
+
+```sh
+TMPO_INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/jasonkatz/tmpo/main/install.sh | bash
+```
+
+### Option B: From source (recommended for contributors)
 
 Requires [Rust](https://rustup.rs/) and [Bun](https://bun.sh/).
 
@@ -54,7 +66,7 @@ make build    # builds both CLI and daemon
 make install  # installs CLI via cargo, copies tmpod to ~/.tmpo/bin/
 ```
 
-### Option B: Cargo install (CLI only)
+### Option C: Cargo install (CLI only)
 
 ```sh
 cargo install --git https://github.com/jasonkatz/tmpo.git --path cli
@@ -73,7 +85,7 @@ Installed tmpod to ~/.tmpo/bin/tmpod
 Daemon started.
 ```
 
-### Option C: Download prebuilt binaries
+### Option D: Download prebuilt binaries
 
 Download both `tmpo` and `tmpod` for your platform from [GitHub Releases](https://github.com/jasonkatz/tmpo/releases), then:
 
