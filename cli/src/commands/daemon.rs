@@ -21,16 +21,21 @@ pub async fn run_start(ctx: &Context) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    // Find the tmpod binary: check PATH, local installs, or download
-    let tmpod = find_or_download_tmpod().await?;
+    // Find the tmpod binary or dev source: check PATH, local installs, dev mode, or download
+    let launch = find_or_download_tmpod().await?;
 
     // Spawn detached daemon process
-    let _child = std::process::Command::new(&tmpod)
+    let mut cmd = std::process::Command::new(&launch.command);
+    cmd.args(&launch.args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::null());
+    if let Some(ref dir) = launch.cwd {
+        cmd.current_dir(dir);
+    }
+    let _child = cmd
         .spawn()
-        .map_err(|e| anyhow::anyhow!("Failed to start daemon ({}): {}", tmpod, e))?;
+        .map_err(|e| anyhow::anyhow!("Failed to start daemon ({}): {}", launch.display(), e))?;
 
     // Wait for socket to appear (poll up to 5s)
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
@@ -160,6 +165,34 @@ pub async fn ensure_daemon(ctx: &Context) -> anyhow::Result<()> {
 
 const GITHUB_REPO: &str = "jasonkatz/tmpo";
 
+struct DaemonLaunch {
+    command: String,
+    args: Vec<String>,
+    cwd: Option<PathBuf>,
+}
+
+impl DaemonLaunch {
+    fn binary(path: String) -> Self {
+        Self { command: path, args: vec![], cwd: None }
+    }
+
+    fn bun_dev(server_dir: PathBuf) -> Self {
+        Self {
+            command: "bun".to_string(),
+            args: vec!["run".to_string(), "src/daemon.ts".to_string()],
+            cwd: Some(server_dir),
+        }
+    }
+
+    fn display(&self) -> String {
+        if self.args.is_empty() {
+            self.command.clone()
+        } else {
+            format!("{} {}", self.command, self.args.join(" "))
+        }
+    }
+}
+
 fn tmpo_bin_dir() -> PathBuf {
     dirs_home().join(".tmpo").join("bin")
 }
@@ -170,14 +203,15 @@ fn dirs_home() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("/tmp"))
 }
 
-fn find_tmpod() -> Option<String> {
-    // 1. Check ~/.tmpo/bin/tmpod (managed install location)
+/// Look for a compiled tmpod binary in standard locations.
+fn find_tmpod_binary() -> Option<String> {
+    // 1. ~/.tmpo/bin/tmpod (managed install / make install)
     let managed = tmpo_bin_dir().join("tmpod");
     if managed.exists() {
         return Some(managed.to_string_lossy().to_string());
     }
 
-    // 2. Check PATH
+    // 2. PATH
     if let Ok(output) = std::process::Command::new("which")
         .arg("tmpod")
         .output()
@@ -190,10 +224,53 @@ fn find_tmpod() -> Option<String> {
         }
     }
 
-    // 3. Check common locations
+    // 3. Common locations
     for candidate in &["/usr/local/bin/tmpod"] {
         if Path::new(candidate).exists() {
             return Some(candidate.to_string());
+        }
+    }
+
+    None
+}
+
+/// Look for the daemon TypeScript source in a git checkout, runnable via bun.
+fn find_dev_source() -> Option<PathBuf> {
+    // Check if bun is available
+    let bun_ok = std::process::Command::new("bun")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success());
+    if !bun_ok {
+        return None;
+    }
+
+    // Walk up from the CLI binary (or cwd) looking for server/src/daemon.ts
+    let start_dirs: Vec<PathBuf> = vec![
+        // Relative to the running binary (works when installed in the repo tree)
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf())),
+        // Current working directory (works when running from repo root)
+        std::env::current_dir().ok(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    for start in start_dirs {
+        let mut dir = start.as_path();
+        for _ in 0..5 {
+            let daemon_ts = dir.join("server").join("src").join("daemon.ts");
+            if daemon_ts.exists() {
+                return Some(dir.join("server"));
+            }
+            match dir.parent() {
+                Some(parent) => dir = parent,
+                None => break,
+            }
         }
     }
 
@@ -210,7 +287,7 @@ fn platform_target() -> anyhow::Result<&'static str> {
     }
 }
 
-async fn download_tmpod() -> anyhow::Result<String> {
+async fn download_tmpod() -> anyhow::Result<DaemonLaunch> {
     let target = platform_target()?;
     let asset_name = format!("tmpod-{target}");
     let url = format!(
@@ -254,7 +331,6 @@ async fn download_tmpod() -> anyhow::Result<String> {
     let dest = bin_dir.join("tmpod");
     std::fs::write(&dest, &bytes)?;
 
-    // Make executable
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -263,13 +339,25 @@ async fn download_tmpod() -> anyhow::Result<String> {
 
     let dest_str = dest.to_string_lossy().to_string();
     eprintln!("Installed tmpod to {dest_str}");
-    Ok(dest_str)
+    Ok(DaemonLaunch::binary(dest_str))
 }
 
-async fn find_or_download_tmpod() -> anyhow::Result<String> {
-    if let Some(path) = find_tmpod() {
-        return Ok(path);
+async fn find_or_download_tmpod() -> anyhow::Result<DaemonLaunch> {
+    // 1. Compiled binary
+    if let Some(path) = find_tmpod_binary() {
+        return Ok(DaemonLaunch::binary(path));
     }
+
+    // 2. Dev mode: bun + source checkout
+    if let Some(server_dir) = find_dev_source() {
+        eprintln!(
+            "No tmpod binary found; using dev mode (bun run src/daemon.ts in {})",
+            server_dir.display()
+        );
+        return Ok(DaemonLaunch::bun_dev(server_dir));
+    }
+
+    // 3. Download from GitHub Releases
     download_tmpod().await
 }
 

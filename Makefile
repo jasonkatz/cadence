@@ -16,8 +16,9 @@ build-daemon: build-client
 	mv server/tmpod dist/tmpod
 
 install:
-	cp cli/target/release/tmpo /usr/local/bin/tmpo
-	cp dist/tmpod /usr/local/bin/tmpod
+	mkdir -p $(HOME)/.tmpo/bin
+	cp dist/tmpod $(HOME)/.tmpo/bin/tmpod
+	cargo install --path cli
 
 clean:
 	rm -rf dist
