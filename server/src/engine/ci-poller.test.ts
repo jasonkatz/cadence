@@ -7,9 +7,10 @@ function makeDeps(overrides?: Partial<CiPollerDeps>): CiPollerDeps {
     getCheckRuns: mock(() =>
       Promise.resolve({
         total_count: 0,
-        check_runs: [] as Array<{ name: string; status: string; conclusion: string | null; output: { summary: string | null } }>,
+        check_runs: [] as Array<{ name: string; status: string; conclusion: string | null; output: { summary: string | null }; details_url: string | null }>,
       })
     ),
+    getFailedJobLogs: mock(() => Promise.resolve(null)),
     sleep: mock(() => Promise.resolve()),
     now: mock(() => Date.now()),
     ...overrides,
@@ -24,8 +25,8 @@ describe("ci-poller", () => {
           Promise.resolve({
             total_count: 2,
             check_runs: [
-              { name: "build", status: "completed", conclusion: "success", output: { summary: null } },
-              { name: "test", status: "completed", conclusion: "success", output: { summary: null } },
+              { name: "build", status: "completed", conclusion: "success", output: { summary: null }, details_url: null },
+              { name: "test", status: "completed", conclusion: "success", output: { summary: null }, details_url: null },
             ],
           })
         ),
@@ -43,9 +44,9 @@ describe("ci-poller", () => {
           Promise.resolve({
             total_count: 3,
             check_runs: [
-              { name: "build", status: "completed", conclusion: "success", output: { summary: null } },
-              { name: "deploy", status: "completed", conclusion: "skipped", output: { summary: null } },
-              { name: "optional", status: "completed", conclusion: "neutral", output: { summary: null } },
+              { name: "build", status: "completed", conclusion: "success", output: { summary: null }, details_url: null },
+              { name: "deploy", status: "completed", conclusion: "skipped", output: { summary: null }, details_url: null },
+              { name: "optional", status: "completed", conclusion: "neutral", output: { summary: null }, details_url: null },
             ],
           })
         ),
@@ -63,8 +64,8 @@ describe("ci-poller", () => {
           Promise.resolve({
             total_count: 2,
             check_runs: [
-              { name: "build", status: "completed", conclusion: "success", output: { summary: null } },
-              { name: "test", status: "completed", conclusion: "failure", output: { summary: "2 tests failed" } },
+              { name: "build", status: "completed", conclusion: "success", output: { summary: null }, details_url: null },
+              { name: "test", status: "completed", conclusion: "failure", output: { summary: "2 tests failed" }, details_url: null },
             ],
           })
         ),
@@ -82,7 +83,7 @@ describe("ci-poller", () => {
           Promise.resolve({
             total_count: 1,
             check_runs: [
-              { name: "lint", status: "completed", conclusion: "failure", output: { summary: "ESLint found 3 errors" } },
+              { name: "lint", status: "completed", conclusion: "failure", output: { summary: "ESLint found 3 errors" }, details_url: null },
             ],
           })
         ),
@@ -102,14 +103,14 @@ describe("ci-poller", () => {
             return Promise.resolve({
               total_count: 1,
               check_runs: [
-                { name: "build", status: "in_progress", conclusion: null, output: { summary: null } },
+                { name: "build", status: "in_progress", conclusion: null, output: { summary: null }, details_url: null },
               ],
             });
           }
           return Promise.resolve({
             total_count: 1,
             check_runs: [
-              { name: "build", status: "completed", conclusion: "success", output: { summary: null } },
+              { name: "build", status: "completed", conclusion: "success", output: { summary: null }, details_url: null },
             ],
           });
         }),
@@ -130,14 +131,14 @@ describe("ci-poller", () => {
             return Promise.resolve({
               total_count: 1,
               check_runs: [
-                { name: "build", status: "queued", conclusion: null, output: { summary: null } },
+                { name: "build", status: "queued", conclusion: null, output: { summary: null }, details_url: null },
               ],
             });
           }
           return Promise.resolve({
             total_count: 1,
             check_runs: [
-              { name: "build", status: "completed", conclusion: "success", output: { summary: null } },
+              { name: "build", status: "completed", conclusion: "success", output: { summary: null }, details_url: null },
             ],
           });
         }),
@@ -159,7 +160,7 @@ describe("ci-poller", () => {
           return Promise.resolve({
             total_count: 1,
             check_runs: [
-              { name: "build", status: "completed", conclusion: "success", output: { summary: null } },
+              { name: "build", status: "completed", conclusion: "success", output: { summary: null }, details_url: null },
             ],
           });
         }),
@@ -177,7 +178,7 @@ describe("ci-poller", () => {
           Promise.resolve({
             total_count: 1,
             check_runs: [
-              { name: "build", status: "in_progress", conclusion: null, output: { summary: null } },
+              { name: "build", status: "in_progress", conclusion: null, output: { summary: null }, details_url: null },
             ],
           })
         ),
@@ -193,13 +194,55 @@ describe("ci-poller", () => {
       expect(result.detail).toContain("timeout");
     });
 
+    it("should include CI logs in failure detail when available", async () => {
+      const deps = makeDeps({
+        getCheckRuns: mock(() =>
+          Promise.resolve({
+            total_count: 1,
+            check_runs: [
+              { name: "build", status: "completed", conclusion: "failure", output: { summary: null }, details_url: null },
+            ],
+          })
+        ),
+        getFailedJobLogs: mock(() =>
+          Promise.resolve("--- build (last 80 lines) ---\nerror[E0308]: mismatched types\n  --> src/main.rs:42:5")
+        ),
+      });
+
+      const result = await pollCiStatus("acme/webapp", "abc123", "ghp_token", deps);
+
+      expect(result.status).toBe("failed");
+      expect(result.detail).toContain("CI Logs");
+      expect(result.detail).toContain("mismatched types");
+      expect(deps.getFailedJobLogs).toHaveBeenCalledWith("acme/webapp", "abc123", "ghp_token", ["build"]);
+    });
+
+    it("should omit CI logs section when log fetch returns null", async () => {
+      const deps = makeDeps({
+        getCheckRuns: mock(() =>
+          Promise.resolve({
+            total_count: 1,
+            check_runs: [
+              { name: "test", status: "completed", conclusion: "failure", output: { summary: null }, details_url: null },
+            ],
+          })
+        ),
+        getFailedJobLogs: mock(() => Promise.resolve(null)),
+      });
+
+      const result = await pollCiStatus("acme/webapp", "abc123", "ghp_token", deps);
+
+      expect(result.status).toBe("failed");
+      expect(result.detail).not.toContain("CI Logs");
+    });
+
     it("should return failed when conclusion is cancelled", async () => {
       const deps = makeDeps({
         getCheckRuns: mock(() =>
           Promise.resolve({
             total_count: 1,
             check_runs: [
-              { name: "build", status: "completed", conclusion: "cancelled", output: { summary: null } },
+              { name: "build", status: "completed", conclusion: "cancelled", output: { summary: null }, details_url: null },
             ],
           })
         ),

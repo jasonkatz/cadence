@@ -81,6 +81,22 @@ export async function runDevAgent(
       timeoutMs: 10_000,
     });
 
+    // Check if there are staged changes before committing
+    const diffResult = await execCommand(
+      "git",
+      ["diff", "--cached", "--quiet"],
+      { cwd: workDir, timeoutMs: 10_000 }
+    );
+    if (diffResult.exitCode === 0) {
+      // No staged changes — agent made no modifications
+      const durationSecs = Math.round((Date.now() - startTime) / 1000);
+      return {
+        exitCode: 1,
+        durationSecs,
+        response: "Dev agent made no changes to the codebase",
+      };
+    }
+
     const commitResult = await execCommand(
       "git",
       ["commit", "-m", `tmpo: ${workflow.task.substring(0, 60)}`],
