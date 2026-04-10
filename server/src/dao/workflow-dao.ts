@@ -92,7 +92,7 @@ export function createWorkflowDao(q: QueryFn) {
     status: string
   ): Promise<Workflow | null> {
     const result = await q<Workflow>(
-      `UPDATE workflows SET status = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`,
+      `UPDATE workflows SET status = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ? RETURNING *`,
       [status, id]
     );
     return result.rows[0] || null;
@@ -110,7 +110,7 @@ export function createWorkflowDao(q: QueryFn) {
     proposal: string
   ): Promise<Workflow | null> {
     const result = await q<Workflow>(
-      `UPDATE workflows SET proposal = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`,
+      `UPDATE workflows SET proposal = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ? RETURNING *`,
       [proposal, id]
     );
     return result.rows[0] || null;
@@ -121,7 +121,7 @@ export function createWorkflowDao(q: QueryFn) {
     error: string
   ): Promise<Workflow | null> {
     const result = await q<Workflow>(
-      `UPDATE workflows SET status = 'failed', error = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`,
+      `UPDATE workflows SET status = 'failed', error = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ? RETURNING *`,
       [error, id]
     );
     return result.rows[0] || null;
@@ -132,7 +132,7 @@ export function createWorkflowDao(q: QueryFn) {
     iteration: number
   ): Promise<Workflow | null> {
     const result = await q<Workflow>(
-      `UPDATE workflows SET iteration = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`,
+      `UPDATE workflows SET iteration = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ? RETURNING *`,
       [iteration, id]
     );
     return result.rows[0] || null;
@@ -143,7 +143,7 @@ export function createWorkflowDao(q: QueryFn) {
     prNumber: number
   ): Promise<Workflow | null> {
     const result = await q<Workflow>(
-      `UPDATE workflows SET pr_number = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`,
+      `UPDATE workflows SET pr_number = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ? RETURNING *`,
       [prNumber, id]
     );
     return result.rows[0] || null;

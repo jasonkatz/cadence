@@ -1,4 +1,4 @@
-import Database from "better-sqlite3";
+import { Database } from "bun:sqlite";
 import os from "os";
 import path from "path";
 import { mkdirSync } from "fs";
@@ -11,22 +11,22 @@ export type QueryFn = <T = Record<string, unknown>>(
   params?: unknown[]
 ) => Promise<{ rows: T[] }>;
 
-let db: Database.Database | null = null;
+let db: Database | null = null;
 
-function getDb(): Database.Database {
+function getDb(): Database {
   if (!db) {
     mkdirSync(TMPO_DIR, { recursive: true });
     mkdirSync(path.join(TMPO_DIR, "runs"), { recursive: true });
     db = new Database(DB_PATH);
-    db.pragma("journal_mode = WAL");
-    db.pragma("foreign_keys = ON");
+    db.run("PRAGMA journal_mode = WAL");
+    db.run("PRAGMA foreign_keys = ON");
     initSchema(db);
   }
   return db;
 }
 
-function initSchema(database: Database.Database): void {
-  database.exec(`
+function initSchema(database: Database): void {
+  database.run(`
     CREATE TABLE IF NOT EXISTS workflows (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6)))),
       task TEXT NOT NULL,
@@ -39,10 +39,12 @@ function initSchema(database: Database.Database): void {
       iteration INTEGER NOT NULL DEFAULT 0,
       max_iters INTEGER NOT NULL DEFAULT 8,
       error TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    )
+  `);
 
+  database.run(`
     CREATE TABLE IF NOT EXISTS steps (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6)))),
       workflow_id TEXT NOT NULL REFERENCES workflows(id),
@@ -52,8 +54,10 @@ function initSchema(database: Database.Database): void {
       started_at TEXT,
       finished_at TEXT,
       detail TEXT
-    );
+    )
+  `);
 
+  database.run(`
     CREATE TABLE IF NOT EXISTS runs (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6)))),
       step_id TEXT NOT NULL REFERENCES steps(id),
@@ -63,8 +67,8 @@ function initSchema(database: Database.Database): void {
       log_path TEXT,
       exit_code INTEGER,
       duration_secs REAL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    )
   `);
 }
 
@@ -73,13 +77,13 @@ export async function query<T = Record<string, unknown>>(
   params?: unknown[]
 ): Promise<{ rows: T[] }> {
   const database = getDb();
-  const stmt = database.prepare(sql);
-  // Detect if this is a SELECT or RETURNING query
   const trimmed = sql.trim().toUpperCase();
   if (trimmed.startsWith("SELECT") || sql.toUpperCase().includes("RETURNING")) {
+    const stmt = database.prepare(sql);
     const rows = (params ? stmt.all(...params) : stmt.all()) as T[];
     return { rows };
   } else {
+    const stmt = database.prepare(sql);
     if (params) {
       stmt.run(...params);
     } else {
@@ -89,7 +93,7 @@ export async function query<T = Record<string, unknown>>(
   }
 }
 
-export function getDatabase(): Database.Database {
+export function getDatabase(): Database {
   return getDb();
 }
 
@@ -101,11 +105,11 @@ export function closeDatabase(): void {
 }
 
 /** For testing: initialize with a custom in-memory or temp database */
-export function initTestDb(): Database.Database {
+export function initTestDb(): Database {
   if (db) db.close();
   db = new Database(":memory:");
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
+  db.run("PRAGMA journal_mode = WAL");
+  db.run("PRAGMA foreign_keys = ON");
   initSchema(db);
   return db;
 }

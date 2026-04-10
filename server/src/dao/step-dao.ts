@@ -74,10 +74,10 @@ export function createStepDao(q: QueryFn) {
     const params: unknown[] = [status];
 
     if (status === "running") {
-      setClauses.push("started_at = datetime('now')");
+      setClauses.push("started_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
     }
     if (status === "passed" || status === "failed") {
-      setClauses.push("finished_at = datetime('now')");
+      setClauses.push("finished_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
     }
     if (detail !== undefined) {
       setClauses.push("detail = ?");

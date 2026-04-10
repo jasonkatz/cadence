@@ -65,7 +65,8 @@ export interface EngineDeps {
 }
 
 async function defaultGetPrDiff(token: string, repo: string, prNumber: number): Promise<string> {
-  const res = await fetch(
+  // Try the diff media type first
+  const diffRes = await fetch(
     `https://api.github.com/repos/${repo}/pulls/${prNumber}`,
     {
       headers: {
@@ -75,10 +76,32 @@ async function defaultGetPrDiff(token: string, repo: string, prNumber: number): 
       },
     }
   );
-  if (!res.ok) {
-    throw new Error(`Failed to fetch PR diff (${res.status})`);
+  if (diffRes.ok) {
+    return diffRes.text();
   }
-  return res.text();
+
+  // Fallback: use the files endpoint and reconstruct from patches
+  const filesRes = await fetch(
+    `https://api.github.com/repos/${repo}/pulls/${prNumber}/files?per_page=100`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    }
+  );
+  if (!filesRes.ok) {
+    throw new Error(`Failed to fetch PR files (${filesRes.status})`);
+  }
+  const files = (await filesRes.json()) as Array<{
+    filename: string;
+    status: string;
+    patch?: string;
+  }>;
+  return files
+    .map((f) => `--- a/${f.filename}\n+++ b/${f.filename}\n${f.patch || ""}`)
+    .join("\n");
 }
 
 async function defaultGetHeadSha(token: string, repo: string, branch: string): Promise<string> {
@@ -443,7 +466,15 @@ export async function handleCi(data: JobData, deps: EngineDeps): Promise<void> {
 
   await startStep(stepId, "ci", workflowId, deps);
 
-  const headSha = await deps.getHeadSha(githubToken, workflow.repo, workflow.branch);
+  let headSha: string;
+  try {
+    headSha = await deps.getHeadSha(githubToken, workflow.repo, workflow.branch);
+  } catch (error) {
+    const detail = `Failed to fetch head SHA (${error instanceof Error ? error.message : String(error)})`;
+    await failStep(stepId, "ci", workflowId, detail, deps);
+    await regress(workflow, detail, deps);
+    return;
+  }
   const ciResult = await deps.pollCiStatus(workflow.repo, headSha, githubToken);
 
   if (ciResult.status === "failed") {
@@ -468,7 +499,15 @@ export async function handleReview(data: JobData, deps: EngineDeps): Promise<voi
 
   await startStep(stepId, "review", workflowId, deps);
 
-  const prDiff = await deps.getPrDiff(githubToken, workflow.repo, workflow.pr_number!);
+  let prDiff: string;
+  try {
+    prDiff = await deps.getPrDiff(githubToken, workflow.repo, workflow.pr_number!);
+  } catch (error) {
+    const detail = `Failed to fetch PR diff (${error instanceof Error ? error.message : String(error)})`;
+    await failStep(stepId, "review", workflowId, detail, deps);
+    await regress(workflow, detail, deps);
+    return;
+  }
 
   const runLogger = createRunLogger(workflowId, "review", data.iteration);
   const reviewPrompt = `Review PR #${workflow.pr_number} for task: ${workflow.task}`;
