@@ -141,7 +141,12 @@ pub async fn run_status(ctx: &Context) -> anyhow::Result<()> {
 }
 
 /// Ensure the daemon is running, starting it if necessary. Returns Ok(()) when the daemon is ready.
+/// Skips daemon management when connecting to a remote URL.
 pub async fn ensure_daemon(ctx: &Context) -> anyhow::Result<()> {
+    if ctx.remote_url.is_some() {
+        return Ok(());
+    }
+
     let client = ApiClient::new_unix(ctx.socket_path.clone());
     if client.is_reachable().await {
         return Ok(());
