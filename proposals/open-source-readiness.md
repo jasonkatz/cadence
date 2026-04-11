@@ -192,7 +192,7 @@ Make installation trivial on macOS and Linux.
     - `tmpod-linux-arm64` (daemon)
   - Checksum file (`SHA256SUMS`) and signing
 - Homebrew
-  - `brew tap jasonkatz/tmpo && brew install tmpo`
+  - `brew tap jasonkatz/tap && brew install tmpo`
   - Formula installs both CLI and daemon binaries
   - Optionally: `brew services start tmpo` for launchd integration
 - Build from source docs

@@ -184,7 +184,7 @@ jobs:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          REPO="jasonkatz/homebrew-tmpo"
+          REPO="jasonkatz/homebrew-tap"
 
           # Generate the formula
           cat > tmpo.rb <<FORMULA
@@ -253,4 +253,4 @@ jobs:
             --field message="Update tmpo to ${VERSION}" \
             --field content="$(base64 -w0 tmpo.rb)" \
             --field sha="$(gh api repos/${REPO}/contents/Formula/tmpo.rb --jq '.sha' 2>/dev/null || echo '')" \
-            2>/dev/null || echo "::warning::Could not update Homebrew tap. Ensure ${REPO} exists and HOMEBREW_TAP_TOKEN has access."
+            2>/dev/null || echo "::warning::Could not update Homebrew tap. Ensure jasonkatz/homebrew-tap exists and HOMEBREW_TAP_TOKEN has access."
