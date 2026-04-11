@@ -1,14 +1,11 @@
 [package]
-name = "tmpo"
+name = "tmpo-cli"
 version = "0.1.0"
 edition = "2021"
 description = "CLI for the tmpo autonomous software delivery pipeline"
 license = "MIT"
 repository = "https://github.com/jasonkatz/tmpo"
 homepage = "https://tmpo.sh"
-readme = "../README.md"
-keywords = ["cli", "automation", "delivery", "pipeline"]
-categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "tmpo"
