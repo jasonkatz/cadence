@@ -55,9 +55,8 @@ main() {
 
   # Resolve latest release tag
   local tag
-  tag="$(curl -fsSL -o /dev/null -w '%{redirect_url}' \
-    "https://github.com/${REPO}/releases/latest" \
-    | grep -oE '[^/]+$')"
+  tag="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
+    | grep '"tag_name"' | head -1 | sed 's/.*: "\(.*\)".*/\1/')"
 
   if [ -z "$tag" ]; then
     err "Could not determine latest release. Check https://github.com/${REPO}/releases"
