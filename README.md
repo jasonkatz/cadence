@@ -141,5 +141,5 @@ See `proposals/open-source-readiness.md` for the full roadmap.
 - [x] **Phase 1-2** — Auth simplification, self-hosted deployment (stepping stones)
 - [x] **Phase 3** — Local storage (SQLite, JSONL logs, config.toml)
 - [x] **Phase 4** — Daemon mode (unix socket, CLI lifecycle, graceful shutdown)
-- [ ] **Phase 5** — Distribution (GitHub Releases, Homebrew, tmpo doctor)
-- [ ] **Phase 6** — Documentation and community
+- [x] **Phase 5** — Distribution (GitHub Releases, install script, tmpo doctor)
+- [x] **Phase 6** — Documentation and community

@@ -1,6 +1,6 @@
 PREFIX ?= /usr/local
 
-.PHONY: build build-cli build-daemon build-client install clean test release
+.PHONY: build build-cli build-daemon build-client install clean test release dev
 
 build: build-cli build-daemon
 
@@ -33,6 +33,9 @@ clean:
 	rm -rf server/public
 	rm -f server/tmpod
 	cd cli && cargo clean
+
+dev:
+	cd server && bun run dev:daemon
 
 test:
 	cd server && bun test
