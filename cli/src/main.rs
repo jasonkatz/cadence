@@ -6,7 +6,7 @@ mod api;
 mod commands;
 mod output;
 
-use commands::{cancel, config as config_cmd, daemon, list, logs, proposal, run, status, ui};
+use commands::{cancel, config as config_cmd, daemon, doctor, list, logs, proposal, run, status, ui};
 
 fn default_socket_path() -> PathBuf {
     let home = dirs_home();
@@ -116,6 +116,8 @@ enum Commands {
         #[arg(short, long, default_value = "7070")]
         port: u16,
     },
+    /// Check environment health and print diagnostics
+    Doctor,
 }
 
 #[derive(Subcommand)]
@@ -191,6 +193,7 @@ async fn main() {
             DaemonAction::Status => daemon::run_status(&ctx).await,
         },
         Commands::Ui { port } => ui::run(&ctx, port).await,
+        Commands::Doctor => doctor::run(&ctx).await,
     };
 
     if let Err(err) = result {

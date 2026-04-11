@@ -1,6 +1,7 @@
 pub mod cancel;
 pub mod config;
 pub mod daemon;
+pub mod doctor;
 pub mod list;
 pub mod logs;
 pub mod proposal;

@@ -1,4 +1,6 @@
-.PHONY: build build-cli build-daemon build-client install clean test
+PREFIX ?= /usr/local
+
+.PHONY: build build-cli build-daemon build-client install clean test release
 
 build: build-cli build-daemon
 
@@ -15,10 +17,16 @@ build-daemon: build-client
 	mkdir -p dist
 	mv server/tmpod dist/tmpod
 
-install:
-	mkdir -p $(HOME)/.tmpo/bin
-	cp dist/tmpod $(HOME)/.tmpo/bin/tmpod
-	cargo install --path cli
+install: build
+	install -d $(DESTDIR)$(PREFIX)/bin
+	install -m 755 cli/target/release/tmpo $(DESTDIR)$(PREFIX)/bin/tmpo
+	install -m 755 dist/tmpod $(DESTDIR)$(PREFIX)/bin/tmpod
+	install -d $(HOME)/.tmpo/bin
+	install -m 755 dist/tmpod $(HOME)/.tmpo/bin/tmpod
+
+release: build-cli build-daemon
+	@echo "Built release binaries:"
+	@ls -lh cli/target/release/tmpo dist/tmpod
 
 clean:
 	rm -rf dist

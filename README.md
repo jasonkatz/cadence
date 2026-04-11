@@ -66,26 +66,7 @@ make build    # builds both CLI and daemon
 make install  # installs CLI via cargo, copies tmpod to ~/.tmpo/bin/
 ```
 
-### Option C: Cargo install (CLI only)
-
-```sh
-cargo install --git https://github.com/jasonkatz/tmpo.git --path cli
-```
-
-The daemon binary (`tmpod`) will be auto-downloaded from GitHub Releases on first use:
-
-```
-$ tmpo daemon start
-tmpod not found. Download from GitHub Releases?
-  https://github.com/jasonkatz/tmpo/releases/latest/download/tmpod-darwin-arm64
-
-[Y/n] y
-Downloading tmpod-darwin-arm64...
-Installed tmpod to ~/.tmpo/bin/tmpod
-Daemon started.
-```
-
-### Option D: Download prebuilt binaries
+### Option C: Download prebuilt binaries
 
 Download both `tmpo` and `tmpod` for your platform from [GitHub Releases](https://github.com/jasonkatz/tmpo/releases), then:
 
@@ -160,5 +141,5 @@ See `proposals/open-source-readiness.md` for the full roadmap.
 - [x] **Phase 1-2** — Auth simplification, self-hosted deployment (stepping stones)
 - [x] **Phase 3** — Local storage (SQLite, JSONL logs, config.toml)
 - [x] **Phase 4** — Daemon mode (unix socket, CLI lifecycle, graceful shutdown)
-- [ ] **Phase 5** — Distribution (GitHub Releases, Homebrew, cargo install)
+- [ ] **Phase 5** — Distribution (GitHub Releases, Homebrew, tmpo doctor)
 - [ ] **Phase 6** — Documentation and community

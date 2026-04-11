@@ -195,9 +195,6 @@ Make installation trivial on macOS and Linux.
   - `brew tap jasonkatz/tmpo && brew install tmpo`
   - Formula installs both CLI and daemon binaries
   - Optionally: `brew services start tmpo` for launchd integration
-- Cargo (CLI only)
-  - `cargo install tmpo` builds the Rust CLI from source
-  - Daemon still needs Bun build or prebuilt download
 - Build from source docs
   - Prerequisites: Rust toolchain, Bun, Node (for client build)
   - `make build` produces both binaries

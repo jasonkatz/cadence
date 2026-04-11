@@ -12,6 +12,18 @@ import { closeDatabase } from "./db";
 import { recoverInterruptedWorkflows } from "./recovery";
 import { createDaemonRoutes } from "./routes/daemon";
 
+// Handle --version flag before anything else
+if (process.argv.includes("--version")) {
+  const pkgPath = path.join(import.meta.dir, "..", "package.json");
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+    console.log(`tmpod ${pkg.version}`);
+  } catch {
+    console.log("tmpod (unknown version)");
+  }
+  process.exit(0);
+}
+
 const TMPO_DIR = path.join(os.homedir(), ".tmpo");
 const SOCKET_PATH = path.join(TMPO_DIR, "tmpod.sock");
 const PID_PATH = path.join(TMPO_DIR, "tmpod.pid");
