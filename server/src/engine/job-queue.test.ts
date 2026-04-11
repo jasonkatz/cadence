@@ -122,6 +122,27 @@ describe("JobQueue", () => {
     queue.stop();
   });
 
+  it("should report active job count", async () => {
+    let resolve: () => void;
+    const block = new Promise<void>((r) => { resolve = r; });
+
+    queue.registerHandler("job-a", async () => {
+      await block;
+    });
+
+    queue.start();
+    expect(queue.activeCount()).toBe(0);
+
+    queue.enqueue("job-a", makeJobData(), 60000);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(queue.activeCount()).toBe(1);
+
+    resolve!();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(queue.activeCount()).toBe(0);
+    queue.stop();
+  });
+
   it("should not process jobs before start() is called", async () => {
     const executed: string[] = [];
     queue.registerHandler("job-a", async () => {

@@ -1,36 +1,12 @@
-import express from "express";
+import { createApp } from "./app";
 import { config } from "./config";
 import { logger } from "./utils/logger";
-import { corsMiddleware } from "./middleware/cors";
-import { requestLogger } from "./middleware/request-logger";
-import { rateLimiter } from "./middleware/rate-limiter";
 import { errorHandler } from "./middleware/error-handler";
-import healthRoutes from "./routes/health";
-import docsRoutes from "./routes/docs";
-import settingsRoutes from "./routes/settings";
-import workflowRoutes from "./routes/workflows";
-import eventsRoutes from "./routes/events";
 import { createEngine } from "./engine/workflow-engine";
 import { setEngineFunctions } from "./services/workflow-service";
+import { closeDatabase } from "./db";
 
-const app = express();
-
-app.use(corsMiddleware);
-app.use(express.json());
-app.use(requestLogger);
-
-// Public routes
-app.use(healthRoutes);
-app.use(docsRoutes);
-
-// API routes
-const apiRouter = express.Router();
-apiRouter.use(rateLimiter);
-apiRouter.use(settingsRoutes);
-apiRouter.use(workflowRoutes);
-apiRouter.use(eventsRoutes);
-
-app.use("/v1", apiRouter);
+const app = createApp();
 
 // 404 for unmatched routes
 app.use((_req, res) => {
@@ -57,6 +33,7 @@ async function shutdown(signal: string) {
   logger.info(`Received ${signal}, shutting down gracefully`);
   await engine.stop();
   server.close(() => {
+    closeDatabase();
     logger.info("Server closed");
     process.exit(0);
   });

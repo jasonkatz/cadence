@@ -71,6 +71,10 @@ export class JobQueue {
     this.timers.clear();
   }
 
+  activeCount(): number {
+    return this.active.size;
+  }
+
   private async processWorkflow(workflowId: string): Promise<void> {
     if (this.active.has(workflowId)) return;
 

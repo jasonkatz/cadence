@@ -1,4 +1,5 @@
-use crate::api::{ApiClient, Workflow, WorkflowCreateInput};
+use crate::api::{Workflow, WorkflowCreateInput};
+use crate::commands::daemon::ensure_daemon;
 use crate::commands::Context;
 use crate::output::{print_json, print_success};
 
@@ -10,7 +11,8 @@ pub async fn run(
     requirements: Option<&str>,
     max_iters: Option<i64>,
 ) -> anyhow::Result<()> {
-    let client = ApiClient::new(&ctx.base_url);
+    ensure_daemon(ctx).await?;
+    let client = ctx.client();
     let input = WorkflowCreateInput {
         task: task.to_string(),
         repo: repo.to_string(),
