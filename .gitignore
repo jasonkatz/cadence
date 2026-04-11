@@ -34,12 +34,5 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Terraform
-infra/.terraform/
-infra/*.tfstate
-infra/*.tfstate.backup
-infra/.terraform.lock.hcl
-infra/terraform.tfvars
-
 # Misc
 *.tsbuildinfo
