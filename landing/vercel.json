@@ -1,0 +1,9 @@
+{
+  "redirects": [
+    {
+      "source": "/install",
+      "destination": "https://raw.githubusercontent.com/jasonkatz/tmpo/main/install.sh",
+      "permanent": false
+    }
+  ]
+}
