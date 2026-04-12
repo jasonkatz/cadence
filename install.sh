@@ -4,7 +4,7 @@ set -euo pipefail
 # Tmpo installer — downloads the CLI and daemon from GitHub Releases.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/jasonkatz/tmpo/main/install.sh | bash
+#   curl -fsSL https://tmpo.sh/install | bash
 
 REPO="jasonkatz/tmpo"
 INSTALL_DIR="${TMPO_INSTALL_DIR:-$HOME/.tmpo/bin}"

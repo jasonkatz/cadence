@@ -46,13 +46,13 @@ The CLI talks to a local daemon over a Unix socket. The daemon manages all state
 ### Option A: One-line install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/jasonkatz/tmpo/main/install.sh | bash
+curl -fsSL https://tmpo.sh/install | bash
 ```
 
 Downloads both `tmpo` (CLI) and `tmpod` (daemon) from the latest GitHub Release to `~/.tmpo/bin/` and offers to add it to your PATH. Override the install directory with `TMPO_INSTALL_DIR`:
 
 ```sh
-TMPO_INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/jasonkatz/tmpo/main/install.sh | bash
+TMPO_INSTALL_DIR=/usr/local/bin curl -fsSL https://tmpo.sh/install | bash
 ```
 
 ### Option B: From source (recommended for contributors)

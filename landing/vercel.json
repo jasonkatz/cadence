@@ -1,4 +1,8 @@
 {
+  "buildCommand": null,
+  "installCommand": null,
+  "framework": null,
+  "outputDirectory": ".",
   "redirects": [
     {
       "source": "/install",
