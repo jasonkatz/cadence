@@ -71,10 +71,10 @@ main() {
 
   # Download CLI and daemon
   echo "Downloading tmpo..."
-  curl -fsSL -o "${tmpdir}/tmpo" "${base_url}/tmpo-${platform}"
+  curl -fL --progress-bar -o "${tmpdir}/tmpo" "${base_url}/tmpo-${platform}"
 
-  echo "Downloading tmpod..."
-  curl -fsSL -o "${tmpdir}/tmpod" "${base_url}/tmpod-${platform}"
+  echo "Downloading tmpod (~60MB)..."
+  curl -fL --progress-bar -o "${tmpdir}/tmpod" "${base_url}/tmpod-${platform}"
 
   # Install
   mkdir -p "$INSTALL_DIR"
@@ -105,9 +105,19 @@ main() {
 
     if [ -n "$shell_profile" ] && [ -f "$shell_profile" ]; then
       if ! grep -q "${INSTALL_DIR}" "$shell_profile" 2>/dev/null; then
-        answer="n"
-        read -r -p "Add to ${shell_profile} now? [Y/n] " answer </dev/tty 2>/dev/null || true
-        if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
+        answer=""
+        got_answer=0
+        if { true > /dev/tty; } 2>/dev/null; then
+          printf "Add to %s now? [Y/n] " "$shell_profile" > /dev/tty
+          if read -r answer < /dev/tty; then
+            got_answer=1
+          else
+            # No tty input available — print a newline so the bare prompt
+            # doesn't trail into the next line, then skip.
+            printf "\n" > /dev/tty
+          fi
+        fi
+        if [ "$got_answer" = "1" ] && { [ -z "$answer" ] || [ "$answer" = "y" ] || [ "$answer" = "Y" ]; }; then
           echo "" >> "$shell_profile"
           echo "# tmpo" >> "$shell_profile"
           echo "export PATH=\"${INSTALL_DIR}:\$PATH\"" >> "$shell_profile"
