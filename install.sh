@@ -70,7 +70,7 @@ main() {
   trap 'rm -rf "${tmpdir:-}"' EXIT
 
   # Download CLI and daemon
-  echo "Downloading tmpo..."
+  echo "Downloading tmpo (~5MB)..."
   curl -fL --progress-bar -o "${tmpdir}/tmpo" "${base_url}/tmpo-${platform}"
 
   echo "Downloading tmpod (~60MB)..."
