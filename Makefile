@@ -31,6 +31,7 @@ release: build-cli build-daemon
 clean:
 	rm -rf dist
 	rm -rf server/public
+	rm -f server/src/generated/embedded-public.ts
 	rm -f server/tmpod
 	cd cli && cargo clean
 

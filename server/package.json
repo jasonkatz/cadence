@@ -7,7 +7,7 @@
         "dev": "bun --watch src/index.ts",
         "dev:daemon": "bun --watch src/daemon.ts",
         "build": "bun build src/index.ts --outdir dist --target bun",
-        "build:binary": "bun build src/daemon.ts --compile --outfile tmpod",
+        "build:binary": "bun scripts/generate-embedded-public.ts && bun build src/daemon.ts --compile --outfile tmpod",
         "start": "bun dist/index.js",
         "start:daemon": "bun src/daemon.ts",
         "openapi:gen": "bunx openapi-typescript schema.yaml -o src/types/api.ts",
