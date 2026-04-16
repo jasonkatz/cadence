@@ -30,6 +30,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.11"
+
+      # CLI embeds client/dist/index.html via include_bytes! at compile time.
+      - name: Build client
+        working-directory: client
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -66,24 +78,6 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.11"
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "yarn"
-          cache-dependency-path: client/yarn.lock
-
-      - name: Build client
-        working-directory: client
-        run: |
-          yarn install --frozen-lockfile
-          yarn build
-
-      - name: Copy client assets
-        run: |
-          mkdir -p server/public
-          cp -r client/dist/* server/public/
 
       - name: Install server dependencies
         working-directory: server
