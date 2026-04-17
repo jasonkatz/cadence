@@ -9,7 +9,6 @@ import { errorHandler } from "./middleware/error-handler";
 import { createEngine } from "./engine/workflow-engine";
 import { setEngineFunctions } from "./services/workflow-service";
 import { closeDatabase } from "./db";
-import { recoverInterruptedWorkflows } from "./recovery";
 import { createDaemonRoutes } from "./routes/daemon";
 
 // Handle --version flag before anything else
@@ -93,8 +92,8 @@ async function main(): Promise<void> {
 
   const app = createApp();
 
-  // Create engine
-  const engine = createEngine();
+  // Create engine (async because the WDK Local World is initialized here).
+  const engine = await createEngine();
   setEngineFunctions({
     enqueueWorkflow: engine.enqueueWorkflow.bind(engine),
     cancelWorkflowJobs: engine.cancelWorkflowJobs.bind(engine),
@@ -107,7 +106,7 @@ async function main(): Promise<void> {
       uptime: Math.floor((Date.now() - state.startedAt.getTime()) / 1000),
       socketPath: SOCKET_PATH,
       tcpPort: state.tcpPort,
-      activeWorkflows: engine.jobQueue.activeCount(),
+      activeWorkflows: engine.activeCount(),
     }),
     enableTcp: (port: number) => enableTcp(app, port),
     shutdown: () => gracefulShutdown(engine, socketServer),
@@ -127,8 +126,9 @@ async function main(): Promise<void> {
     writePidFile();
     logger.info(`Daemon listening on ${SOCKET_PATH} (PID ${process.pid})`);
 
-    // Recover interrupted workflows then start engine
-    await recoverInterruptedWorkflows(engine.deps);
+    // The engine start sequence: reap any orphan claude subprocesses from the
+    // previous lifecycle, then let the WDK runtime re-enqueue active runs so
+    // they resume from the last completed step.
     await engine.start();
   });
 
@@ -168,7 +168,7 @@ function enableTcp(app: express.Express, port: number): { success: boolean; erro
 let isShuttingDown = false;
 
 async function gracefulShutdown(
-  engine: ReturnType<typeof createEngine>,
+  engine: Awaited<ReturnType<typeof createEngine>>,
   socketServer: http.Server
 ): Promise<void> {
   if (isShuttingDown) return;
@@ -182,7 +182,7 @@ async function gracefulShutdown(
   const SHUTDOWN_TIMEOUT = 30_000;
   const waitForActive = new Promise<void>((resolve) => {
     const check = () => {
-      if (engine.jobQueue.activeCount() === 0) {
+      if (engine.activeCount() === 0) {
         resolve();
       } else {
         setTimeout(check, 500);

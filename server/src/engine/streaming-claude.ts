@@ -1,4 +1,9 @@
 import { spawn } from "child_process";
+import {
+  recordProcess,
+  clearProcess,
+  type PidRegistry,
+} from "./subprocess-reaper";
 import type { RunEvent, RunLogger } from "../utils/run-logger";
 
 export interface StreamingClaudeOptions {
@@ -7,6 +12,17 @@ export interface StreamingClaudeOptions {
   cwd?: string;
   timeoutMs?: number;
   runLogger?: RunLogger;
+  /**
+   * Unique step identifier — appended to argv as `--tmpo-step-id=<id>` and
+   * recorded in the PID registry so a daemon restart can match the surviving
+   * process even if its pid was recycled. `claude` ignores unknown flags.
+   */
+  stepId?: string;
+  /**
+   * Registry for stale-PID recovery. Tests pass an in-memory registry;
+   * production passes the daemon-wide registry backed by disk.
+   */
+  pidRegistry?: PidRegistry;
 }
 
 export interface StreamingClaudeResult {
@@ -49,11 +65,25 @@ export function runStreamingClaude(
       "--allowedTools",
       opts.allowedTools,
     ];
+    // Sentinel argv element — the reaper uses this to confirm a recycled PID
+    // still belongs to a tmpo step before sending SIGTERM.
+    if (opts.stepId) {
+      args.push(`--tmpo-step-id=${opts.stepId}`);
+    }
 
     const proc = spawn("claude", args, {
       cwd: opts.cwd,
       stdio: ["ignore", "pipe", "pipe"],
+      // detached:true puts the child in its own process group so we can kill
+      // the whole tree via negative pid, and a daemon crash doesn't leave it
+      // implicitly attached to a reaped parent.
+      detached: true,
     });
+
+    const stepId = opts.stepId;
+    if (stepId && proc.pid !== undefined && opts.pidRegistry) {
+      opts.pidRegistry.record(stepId, proc.pid);
+    }
 
     let stdoutBuf = "";
     let stderrBuf = "";
@@ -106,12 +136,21 @@ export function runStreamingClaude(
       stderrBuf += chunk.toString();
     });
 
+    const killTree = (signal: NodeJS.Signals = "SIGTERM") => {
+      if (proc.pid === undefined) return;
+      try {
+        process.kill(-proc.pid, signal);
+      } catch {
+        // Process group already gone, or never started.
+      }
+    };
+
     const timer = opts.timeoutMs
       ? setTimeout(() => {
           opts.runLogger?.append("error", {
             message: `claude timed out after ${opts.timeoutMs}ms`,
           });
-          proc.kill("SIGTERM");
+          killTree("SIGTERM");
           reject(new Error(`Command timed out after ${opts.timeoutMs}ms`));
         }, opts.timeoutMs)
       : null;
@@ -121,6 +160,9 @@ export function runStreamingClaude(
       if (stdoutBuf.trim()) handleLine(stdoutBuf);
       if (stderrBuf.trim()) {
         opts.runLogger?.append("error", { stderr: stderrBuf.slice(0, 4000) });
+      }
+      if (stepId && opts.pidRegistry) {
+        clearProcess(opts.pidRegistry, stepId);
       }
       resolve({
         exitCode: code ?? 1,
@@ -132,7 +174,14 @@ export function runStreamingClaude(
     proc.on("error", (err) => {
       if (timer) clearTimeout(timer);
       opts.runLogger?.append("error", { message: err.message });
+      if (stepId && opts.pidRegistry) {
+        clearProcess(opts.pidRegistry, stepId);
+      }
       reject(err);
     });
   });
 }
+
+// Re-exported for callers that want to persist pids outside the streaming
+// helper (e.g. long-running shell commands wrapped in a step).
+export { recordProcess };
