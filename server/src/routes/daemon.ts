@@ -9,7 +9,7 @@ export interface DaemonStatus {
 }
 
 export interface DaemonRouteDeps {
-  getState: () => DaemonStatus;
+  getState: () => Promise<DaemonStatus>;
   enableTcp: (port: number) => { success: boolean; error?: string };
   shutdown: () => void;
 }
@@ -17,8 +17,8 @@ export interface DaemonRouteDeps {
 export function createDaemonRoutes(deps: DaemonRouteDeps): Router {
   const router = Router();
 
-  router.get("/daemon/status", (_req, res) => {
-    const status = deps.getState();
+  router.get("/daemon/status", async (_req, res) => {
+    const status = await deps.getState();
     res.json(status);
   });
 

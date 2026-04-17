@@ -48,8 +48,7 @@ function makeDeps() {
     resumeActive: mock(async () => {
       events.push({ kind: "resume_active" });
     }),
-    cancel: mock(async (_id: string) => {}),
-    activeCount: mock(() => 0),
+    cancel: mock(async (_runId: string) => {}),
     close: mock(async () => {}),
   };
 
@@ -72,6 +71,7 @@ function makeDeps() {
     updateError: mock(async () => null),
     updatePrNumber: mock(async () => null),
     updateIteration: mock(async () => null),
+    countByStatus: mock(async (_status: string) => 0),
   };
 
   const stepDao = {
@@ -190,7 +190,10 @@ describe("createEngine boot sequence", () => {
     expect(deps.backend.start).not.toHaveBeenCalled();
   });
 
-  it("cancelWorkflowJobs delegates to the backend", async () => {
+  it("cancelWorkflowJobs translates workflowId to WDK runId", async () => {
+    (deps.backend.start as ReturnType<typeof mock>).mockImplementation(
+      async () => ({ runId: "wdk-run-42" })
+    );
     const engine = await createEngine({
       workflowDao: deps.workflowDao,
       stepDao: deps.stepDao,
@@ -201,13 +204,15 @@ describe("createEngine boot sequence", () => {
       indexSync: deps.indexSync,
     });
 
+    await engine.enqueueWorkflow("wf-1", 0);
     await engine.cancelWorkflowJobs("wf-1");
 
-    expect(deps.backend.cancel).toHaveBeenCalledWith("wf-1");
+    // Must pass the runId from start(), not the workflowId — WDK's
+    // cancelRun rejects the wrong ID.
+    expect(deps.backend.cancel).toHaveBeenCalledWith("wdk-run-42");
   });
 
-  it("activeCount proxies the backend", async () => {
-    (deps.backend.activeCount as ReturnType<typeof mock>).mockImplementation(() => 3);
+  it("cancelWorkflowJobs throws when the workflow has no tracked run", async () => {
     const engine = await createEngine({
       workflowDao: deps.workflowDao,
       stepDao: deps.stepDao,
@@ -218,6 +223,27 @@ describe("createEngine boot sequence", () => {
       indexSync: deps.indexSync,
     });
 
-    expect(engine.activeCount()).toBe(3);
+    await expect(engine.cancelWorkflowJobs("wf-unknown")).rejects.toThrow(
+      /no active run/
+    );
+    expect(deps.backend.cancel).not.toHaveBeenCalled();
+  });
+
+  it("activeCount queries SQLite (source of truth, not backend memory)", async () => {
+    (deps.workflowDao.countByStatus as ReturnType<typeof mock>).mockImplementation(
+      async (status: string) => (status === "running" ? 3 : 0)
+    );
+    const engine = await createEngine({
+      workflowDao: deps.workflowDao,
+      stepDao: deps.stepDao,
+      runDao: deps.runDao,
+      eventBus: deps.eventBus,
+      backend: deps.backend,
+      pidRegistry: deps.pidRegistry,
+      indexSync: deps.indexSync,
+    });
+
+    expect(await engine.activeCount()).toBe(3);
+    expect(deps.workflowDao.countByStatus).toHaveBeenCalledWith("running");
   });
 });

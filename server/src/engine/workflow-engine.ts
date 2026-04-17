@@ -19,6 +19,9 @@ import { logger } from "../utils/logger";
 /**
  * Backend for starting/resuming durable workflows. Injected into the engine
  * so tests can stub out the WDK runtime without loading the real SDK.
+ *
+ * `cancel` takes a WDK runId (the value returned from `start()`), not our
+ * workflowId — the engine owns the workflowId → runId translation.
  */
 export interface WorkflowBackend {
   start(workflowFn: (ctx: WorkflowContext) => Promise<unknown>, args: [WorkflowContext]): Promise<{ runId: string }>;
@@ -29,9 +32,7 @@ export interface WorkflowBackend {
    * sequence reaper → sync → resume on boot.
    */
   resumeActive(): Promise<void>;
-  cancel(workflowId: string): Promise<void>;
-  /** Approximate count of runs currently executing — used by daemon shutdown. */
-  activeCount(): number;
+  cancel(runId: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -50,16 +51,26 @@ export interface Engine {
   stop(): Promise<void>;
   enqueueWorkflow(workflowId: string, iteration: number): Promise<void>;
   cancelWorkflowJobs(workflowId: string): Promise<void>;
-  activeCount(): number;
+  activeCount(): Promise<number>;
   deps: EngineDeps;
 }
 
 /**
- * Resolves the WDK `workflow/api` module lazily so test environments without
- * the beta SDK installed don't fail to import the engine. Returns a backend
- * bound to a `@workflow/world-local` instance rooted at `~/.tmpo/workflow-data`.
+ * Loads the WDK runtime and returns a backend bound to a
+ * `@workflow/world-local` instance rooted at `~/.tmpo/workflow-data`.
+ * Throws if the SDK is not installed — durability is the whole point of
+ * this engine, so booting without it would silently violate the PR's
+ * acceptance criteria. Set `TMPO_ALLOW_EPHEMERAL=1` to opt into the
+ * in-process (non-durable) backend for CI or smoke tests.
  */
 async function defaultBackend(): Promise<WorkflowBackend> {
+  if (process.env.TMPO_ALLOW_EPHEMERAL === "1") {
+    logger.warn(
+      "TMPO_ALLOW_EPHEMERAL=1 set — using in-process backend with NO durability"
+    );
+    return createInProcessBackend();
+  }
+
   const dataDir = path.join(os.homedir(), ".tmpo", "workflow-data");
   mkdirSync(dataDir, { recursive: true });
   // Route Local World's state under ~/.tmpo/ so it lives alongside SQLite
@@ -68,7 +79,8 @@ async function defaultBackend(): Promise<WorkflowBackend> {
   process.env.WORKFLOW_LOCAL_DATA_DIR = dataDir;
   process.env.WORKFLOW_TARGET_WORLD = process.env.WORKFLOW_TARGET_WORLD || "local";
 
-  let api: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const api = (await import("workflow/api" as any)) as {
     start: (fn: unknown, args: unknown[]) => Promise<{ runId: string }>;
     cancelRun: (runId: string) => Promise<void>;
     reenqueueActiveRuns?: () => Promise<void>;
@@ -77,35 +89,23 @@ async function defaultBackend(): Promise<WorkflowBackend> {
   let world: { start?: () => Promise<void>; close?: () => Promise<void> } | null = null;
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    api = await import("workflow/api" as any);
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const wlocal = await import("@workflow/world-local" as any);
-      if (typeof wlocal.createLocalWorld === "function") {
-        world = wlocal.createLocalWorld({ dataDir });
-        // NB: `world.start()` triggers re-enqueueing of any active runs left
-        // from the previous daemon lifecycle. Defer it to `resumeActive()`
-        // below so the engine's boot sequence can reap orphan subprocesses
-        // BEFORE any step is replayed — otherwise a replayed spawn could
-        // match the surviving orphan's sentinel argv and collide.
-      }
-    } catch {
-      // world-local optional — the api module may already have configured
-      // the world from WORKFLOW_TARGET_WORLD env.
+    const wlocal = await import("@workflow/world-local" as any);
+    if (typeof wlocal.createLocalWorld === "function") {
+      world = wlocal.createLocalWorld({ dataDir });
+      // NB: `world.start()` triggers re-enqueueing of any active runs left
+      // from the previous daemon lifecycle. Defer it to `resumeActive()`
+      // below so the engine's boot sequence can reap orphan subprocesses
+      // BEFORE any step is replayed — otherwise a replayed spawn could
+      // match the surviving orphan's sentinel argv and collide.
     }
-  } catch (error) {
-    logger.error("Failed to load Vercel Workflow SDK (falling back to in-process runner)", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return createInProcessBackend();
+  } catch {
+    // world-local optional — the api module may already have configured
+    // the world from WORKFLOW_TARGET_WORLD env.
   }
-
-  const activeRuns = new Map<string, Promise<unknown>>();
 
   return {
     async start(workflowFn, args) {
-      const run = await api.start(workflowFn, args);
-      return { runId: run.runId };
+      return api.start(workflowFn, args);
     },
     async resumeActive() {
       // `world.start()` internally scans `runs/` for non-terminal state and
@@ -118,18 +118,8 @@ async function defaultBackend(): Promise<WorkflowBackend> {
         await api.reenqueueActiveRuns();
       }
     },
-    async cancel(workflowId) {
-      // Best-effort: if the SDK exposes cancelRun and we have a known run id,
-      // send a cancel; otherwise this is a no-op and the caller must mark the
-      // workflow cancelled in SQLite directly.
-      try {
-        await api.cancelRun(workflowId);
-      } catch {
-        // no-op
-      }
-    },
-    activeCount() {
-      return activeRuns.size;
+    async cancel(runId) {
+      await api.cancelRun(runId);
     },
     async close() {
       if (world && typeof world.close === "function") {
@@ -140,29 +130,24 @@ async function defaultBackend(): Promise<WorkflowBackend> {
 }
 
 /**
- * Fallback in-process backend used when the Vercel Workflow SDK is not
- * available on the machine (e.g. CI, tests). Runs the workflow body directly
- * with no durability guarantees — intended only as a soft fallback so the
- * daemon boots even without the SDK installed.
+ * Ephemeral, in-process backend. Runs the workflow body directly with no
+ * durability — workflows do NOT survive a daemon restart. Only used when
+ * `TMPO_ALLOW_EPHEMERAL=1` is set (CI smoke tests, local dev without the
+ * WDK installed).
  */
 function createInProcessBackend(): WorkflowBackend {
-  const active = new Set<Promise<unknown>>();
   return {
     async start(workflowFn, args) {
       const [ctx] = args;
       const runId = (ctx as WorkflowContext).workflowId;
-      const p = Promise.resolve()
+      Promise.resolve()
         .then(() => workflowFn(ctx))
         .catch((error) => {
           logger.error("In-process workflow failed", {
             runId,
             error: error instanceof Error ? error.message : String(error),
           });
-        })
-        .finally(() => {
-          active.delete(p);
         });
-      active.add(p);
       return { runId };
     },
     async resumeActive() {
@@ -171,12 +156,7 @@ function createInProcessBackend(): WorkflowBackend {
     async cancel() {
       // In-process fallback can't selectively cancel.
     },
-    activeCount() {
-      return active.size;
-    },
-    async close() {
-      await Promise.allSettled(Array.from(active));
-    },
+    async close() {},
   };
 }
 
@@ -209,6 +189,12 @@ export async function createEngine(
     indexSync,
   };
 
+  // WDK returns its own runId from start(); cancelRun() requires that runId,
+  // not our workflowId. Map is populated on enqueueWorkflow and consulted by
+  // cancelWorkflowJobs. Entries are pruned lazily — if WDK rejects a cancel
+  // for an already-terminated run, we just drop the entry.
+  const workflowToRun = new Map<string, string>();
+
   return {
     async start(): Promise<void> {
       // Reap any orphan subprocesses BEFORE re-enqueueing runs so a replayed
@@ -228,13 +214,32 @@ export async function createEngine(
         throw new Error(`Workflow ${workflowId} not found`);
       }
       const ctx = contextFromWorkflow(workflow);
-      await deps.backend.start(runWorkflow, [ctx]);
+      const { runId } = await deps.backend.start(runWorkflow, [ctx]);
+      workflowToRun.set(workflowId, runId);
     },
     async cancelWorkflowJobs(workflowId: string): Promise<void> {
-      await deps.backend.cancel(workflowId);
+      const runId = workflowToRun.get(workflowId);
+      if (!runId) {
+        // No runId means the workflow was never started under this daemon's
+        // lifetime (e.g. it was left over from a previous boot and we're
+        // being asked to cancel before resumeActive has registered its
+        // replay). Callers still update SQLite status directly.
+        throw new Error(
+          `Cannot cancel workflow ${workflowId}: no active run tracked by this engine`
+        );
+      }
+      try {
+        await deps.backend.cancel(runId);
+      } finally {
+        workflowToRun.delete(workflowId);
+      }
     },
-    activeCount(): number {
-      return deps.backend.activeCount();
+    async activeCount(): Promise<number> {
+      // SQLite is the user-facing source of truth for run state; the
+      // index-sync adapter keeps it consistent with WDK's event log.
+      // Querying here avoids having to track a second in-memory set that
+      // must be kept in sync with terminal lifecycle events.
+      return deps.workflowDao.countByStatus("running");
     },
     deps,
   };

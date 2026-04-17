@@ -101,12 +101,12 @@ async function main(): Promise<void> {
 
   // Daemon control routes
   const daemonRouter = createDaemonRoutes({
-    getState: () => ({
+    getState: async () => ({
       pid: process.pid,
       uptime: Math.floor((Date.now() - state.startedAt.getTime()) / 1000),
       socketPath: SOCKET_PATH,
       tcpPort: state.tcpPort,
-      activeWorkflows: engine.activeCount(),
+      activeWorkflows: await engine.activeCount(),
     }),
     enableTcp: (port: number) => enableTcp(app, port),
     shutdown: () => gracefulShutdown(engine, socketServer),
@@ -181,8 +181,8 @@ async function gracefulShutdown(
 
   const SHUTDOWN_TIMEOUT = 30_000;
   const waitForActive = new Promise<void>((resolve) => {
-    const check = () => {
-      if (engine.activeCount() === 0) {
+    const check = async () => {
+      if ((await engine.activeCount()) === 0) {
         resolve();
       } else {
         setTimeout(check, 500);

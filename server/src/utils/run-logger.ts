@@ -1,6 +1,15 @@
 import path from "path";
 import os from "os";
-import { mkdirSync, openSync, writeSync, closeSync, fsyncSync } from "fs";
+import {
+  mkdirSync,
+  openSync,
+  readSync,
+  writeSync,
+  closeSync,
+  fsyncSync,
+  ftruncateSync,
+  fstatSync,
+} from "fs";
 
 export type RunEvent =
   | "prompt"
@@ -27,9 +36,13 @@ export interface RunLogger {
  * open/close per event and keeps each record atomic at the fd level.
  *
  * Closed by `close()` on step completion; a final `fsyncSync` pushes OS
- * buffers to disk. A mid-step `kill -9` between the last `writeSync` and
- * an `fsync` may still truncate the tail line — `parseJsonlTolerant()`
- * drops that partial line on read.
+ * buffers to disk.
+ *
+ * Crash recovery: if a previous daemon lifecycle was killed mid-write, the
+ * file may end with a partial (non-`\n`-terminated) line. On open we heal
+ * by truncating back to the last complete record, so a WDK replay writing
+ * to the same (workflowId, stepType, iteration) path doesn't produce a
+ * malformed line spliced across the crash boundary.
  */
 export function createRunLogger(
   workflowId: string,
@@ -39,6 +52,8 @@ export function createRunLogger(
   const dir = path.join(os.homedir(), ".tmpo", "runs", workflowId);
   mkdirSync(dir, { recursive: true });
   const logPath = path.join(dir, `${stepType}-${iteration}.jsonl`);
+
+  healPartialTail(logPath);
 
   // 'a' = append; file is created if absent. Sharing an fd across appends is
   // safe because writeSync is atomic at the OS level for small writes.
@@ -75,22 +90,62 @@ export function createRunLogger(
 }
 
 /**
- * Parse JSONL content, tolerating a partial trailing line (from e.g. a
- * `kill -9` between flushes). Any line that fails to JSON-parse is dropped
- * from the tail so the caller sees a well-formed stream.
+ * Truncate `logPath` to the last complete line (last `\n` byte). No-op if
+ * the file ends in `\n` or does not exist. Called from `createRunLogger`
+ * before re-opening for append on a replayed step.
+ */
+function healPartialTail(logPath: string): void {
+  let fd: number;
+  try {
+    fd = openSync(logPath, "r+");
+  } catch {
+    // File doesn't exist yet; append-open below will create it.
+    return;
+  }
+  try {
+    const size = fstatSync(fd).size;
+    if (size === 0) return;
+
+    // Read the last chunk to find the last `\n`. 64 KiB is enough for any
+    // single JSONL record this codebase produces; if no newline is found in
+    // that window, assume the whole file is partial and truncate to zero.
+    const chunk = Math.min(size, 65536);
+    const buf = Buffer.alloc(chunk);
+    readSync(fd, buf, 0, chunk, size - chunk);
+    let lastNl = -1;
+    for (let i = buf.length - 1; i >= 0; i--) {
+      if (buf[i] === 0x0a) {
+        lastNl = i;
+        break;
+      }
+    }
+    const lastAbs = lastNl === -1 ? -1 : size - chunk + lastNl;
+    if (lastAbs < size - 1) {
+      ftruncateSync(fd, lastAbs + 1);
+    }
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * Parse JSONL content, dropping any line that fails to JSON-parse. On-disk
+ * healing (see `healPartialTail`) makes this a rare path, but readers that
+ * stream the file while a step is actively writing may still see a partial
+ * tail between an OS page flush and the next newline.
  */
 export function parseJsonlTolerant(content: string): string {
   if (!content) return "";
-  const lines = content.split("\n");
-  if (lines.length === 0) return "";
-  const last = lines[lines.length - 1];
-  if (last === "") {
-    return content;
+  const kept: string[] = [];
+  for (const line of content.split("\n")) {
+    if (line === "") continue;
+    try {
+      JSON.parse(line);
+      kept.push(line);
+    } catch {
+      // Drop malformed line — partial write or corruption.
+    }
   }
-  try {
-    JSON.parse(last);
-    return content;
-  } catch {
-    return lines.slice(0, -1).join("\n") + "\n";
-  }
+  if (kept.length === 0) return "";
+  return kept.join("\n") + "\n";
 }

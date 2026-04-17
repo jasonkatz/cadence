@@ -99,6 +99,35 @@ describe("createRunLogger", () => {
     const content = readFileSync(first.logPath, "utf-8");
     expect(content.trim().split("\n")).toHaveLength(2);
   });
+
+  it("heals a partial trailing line on re-open (no mid-file corruption)", () => {
+    // First run writes one good line + a partial (unterminated) second line,
+    // simulating kill -9 between writeSync and newline flush.
+    const first = createRunLogger(TEST_WF_ID, "dev", 0);
+    first.append("prompt", { text: "first run" });
+    first.close();
+    const logPath = first.logPath;
+    writeFileSync(
+      logPath,
+      readFileSync(logPath, "utf-8") + `{"event":"parti`
+    );
+
+    // Replay: re-open the same path. The healer MUST truncate the partial
+    // tail before appending, otherwise the new line is glued onto the
+    // fragment and produces a malformed mid-file record that
+    // parseJsonlTolerant can't trivially recover.
+    const second = createRunLogger(TEST_WF_ID, "dev", 0);
+    second.append("prompt", { text: "second run" });
+    second.close();
+
+    const content = readFileSync(logPath, "utf-8");
+    const lines = content.trim().split("\n");
+    expect(lines).toHaveLength(2);
+    // Every retained line must be valid JSON — no splicing.
+    for (const line of lines) {
+      expect(() => JSON.parse(line)).not.toThrow();
+    }
+  });
 });
 
 describe("parseJsonlTolerant", () => {
