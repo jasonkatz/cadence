@@ -4,15 +4,13 @@ PREFIX ?= /usr/local
 
 build: build-cli build-daemon
 
-build-cli:
+build-cli: build-client
 	cd cli && cargo build --release
 
 build-client:
 	cd client && bun run build
 
-build-daemon: build-client
-	mkdir -p server/public
-	cp -r client/dist/* server/public/
+build-daemon:
 	cd server && bun run build:binary
 	mkdir -p dist
 	mv server/tmpod dist/tmpod
@@ -30,8 +28,8 @@ release: build-cli build-daemon
 
 clean:
 	rm -rf dist
-	rm -rf server/public
 	rm -f server/tmpod
+	rm -rf client/dist
 	cd cli && cargo clean
 
 dev:

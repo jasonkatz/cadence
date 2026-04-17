@@ -6,6 +6,7 @@ import healthRoutes from "./routes/health";
 import docsRoutes from "./routes/docs";
 import settingsRoutes from "./routes/settings";
 import workflowRoutes from "./routes/workflows";
+import runsRoutes from "./routes/runs";
 import eventsRoutes from "./routes/events";
 
 export function createApp(): express.Express {
@@ -24,6 +25,7 @@ export function createApp(): express.Express {
   apiRouter.use(rateLimiter);
   apiRouter.use(settingsRoutes);
   apiRouter.use(workflowRoutes);
+  apiRouter.use(runsRoutes);
   apiRouter.use(eventsRoutes);
 
   app.use("/v1", apiRouter);

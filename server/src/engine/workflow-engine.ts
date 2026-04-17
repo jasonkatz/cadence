@@ -334,8 +334,6 @@ export async function handlePlan(data: JobData, deps: EngineDeps): Promise<void>
   await startStep(stepId, "plan", workflowId, deps);
 
   const runLogger = createRunLogger(workflowId, "plan", workflow.iteration);
-  const planPrompt = `Plan task: ${workflow.task} for repo ${workflow.repo}`;
-  runLogger.append("prompt", { text: planPrompt });
 
   const planRun = await deps.runDao.create({
     stepId,
@@ -345,9 +343,7 @@ export async function handlePlan(data: JobData, deps: EngineDeps): Promise<void>
     logPath: runLogger.logPath,
   });
 
-  const planResult = await deps.runPlannerAgent(workflow, githubToken);
-
-  runLogger.append("response", { text: planResult.response, exitCode: planResult.exitCode });
+  const planResult = await deps.runPlannerAgent(workflow, githubToken, runLogger);
 
   await deps.runDao.updateResult(planRun.id, {
     exitCode: planResult.exitCode,
@@ -368,7 +364,7 @@ export async function handlePlan(data: JobData, deps: EngineDeps): Promise<void>
 }
 
 export async function handleDev(data: JobData, deps: EngineDeps): Promise<void> {
-  const { workflowId, stepIds, failureContext } = data;
+  const { workflowId, stepIds } = data;
   const stepId = stepIds.dev;
 
   const workflow = await deps.workflowDao.findById(workflowId);
@@ -389,11 +385,6 @@ export async function handleDev(data: JobData, deps: EngineDeps): Promise<void> 
   await startStep(stepId, "dev", workflowId, deps);
 
   const runLogger = createRunLogger(workflowId, "dev", data.iteration);
-  let devPrompt = `Implement task: ${workflow.task} for repo ${workflow.repo} using proposal`;
-  if (failureContext) {
-    devPrompt += `\n\n## Previous Iteration Failure\n\n${failureContext}`;
-  }
-  runLogger.append("prompt", { text: devPrompt });
 
   const devRun = await deps.runDao.create({
     stepId,
@@ -403,9 +394,7 @@ export async function handleDev(data: JobData, deps: EngineDeps): Promise<void> 
     logPath: runLogger.logPath,
   });
 
-  const devResult = await deps.runDevAgent(workflow, githubToken);
-
-  runLogger.append("response", { text: devResult.response, exitCode: devResult.exitCode });
+  const devResult = await deps.runDevAgent(workflow, githubToken, runLogger);
 
   await deps.runDao.updateResult(devRun.id, {
     exitCode: devResult.exitCode,
@@ -510,8 +499,6 @@ export async function handleReview(data: JobData, deps: EngineDeps): Promise<voi
   }
 
   const runLogger = createRunLogger(workflowId, "review", data.iteration);
-  const reviewPrompt = `Review PR #${workflow.pr_number} for task: ${workflow.task}`;
-  runLogger.append("prompt", { text: reviewPrompt });
 
   const reviewRun = await deps.runDao.create({
     stepId,
@@ -521,9 +508,7 @@ export async function handleReview(data: JobData, deps: EngineDeps): Promise<voi
     logPath: runLogger.logPath,
   });
 
-  const reviewResult = await deps.runReviewAgent(workflow, prDiff, githubToken);
-
-  runLogger.append("response", { text: reviewResult.verdict, exitCode: reviewResult.exitCode });
+  const reviewResult = await deps.runReviewAgent(workflow, prDiff, githubToken, runLogger);
 
   await deps.runDao.updateResult(reviewRun.id, {
     exitCode: reviewResult.exitCode,
@@ -558,8 +543,6 @@ export async function handleE2e(data: JobData, deps: EngineDeps): Promise<void> 
   await startStep(stepId, "e2e", workflowId, deps);
 
   const runLogger = createRunLogger(workflowId, "e2e", data.iteration);
-  const e2ePrompt = `Run E2E tests for task: ${workflow.task} on repo ${workflow.repo}`;
-  runLogger.append("prompt", { text: e2ePrompt });
 
   const e2eRun = await deps.runDao.create({
     stepId,
@@ -569,9 +552,7 @@ export async function handleE2e(data: JobData, deps: EngineDeps): Promise<void> 
     logPath: runLogger.logPath,
   });
 
-  const e2eResult = await deps.runE2eAgent(workflow, githubToken);
-
-  runLogger.append("response", { text: e2eResult.response, exitCode: e2eResult.exitCode });
+  const e2eResult = await deps.runE2eAgent(workflow, githubToken, runLogger);
 
   await deps.runDao.updateResult(e2eRun.id, {
     exitCode: e2eResult.exitCode,
@@ -609,8 +590,6 @@ export async function handleE2eVerify(data: JobData, deps: EngineDeps): Promise<
   await startStep(stepId, "e2e_verify", workflowId, deps);
 
   const runLogger = createRunLogger(workflowId, "e2e_verify", data.iteration);
-  const verifyPrompt = `Verify E2E evidence for task: ${workflow.task}`;
-  runLogger.append("prompt", { text: verifyPrompt });
 
   const verifyRun = await deps.runDao.create({
     stepId,
@@ -620,9 +599,12 @@ export async function handleE2eVerify(data: JobData, deps: EngineDeps): Promise<
     logPath: runLogger.logPath,
   });
 
-  const verifyResult = await deps.runE2eVerifier(workflow, data.e2eEvidence || "", githubToken);
-
-  runLogger.append("response", { text: verifyResult.verdict, exitCode: verifyResult.exitCode });
+  const verifyResult = await deps.runE2eVerifier(
+    workflow,
+    data.e2eEvidence || "",
+    githubToken,
+    runLogger
+  );
 
   await deps.runDao.updateResult(verifyRun.id, {
     exitCode: verifyResult.exitCode,

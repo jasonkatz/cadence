@@ -35,7 +35,7 @@ export interface WorkflowDetail extends Workflow {
 export interface WorkflowServiceDeps {
   workflowDao: Pick<typeof defaultWorkflowDao, "create" | "findById" | "list" | "updateStatus">;
   stepDao: Pick<typeof defaultStepDao, "findByWorkflowId" | "findLatestIterationByWorkflowId">;
-  runDao: Pick<typeof defaultRunDao, "findByWorkflowId">;
+  runDao: Pick<typeof defaultRunDao, "findByWorkflowId" | "findById">;
   configService: Pick<typeof defaultConfigService, "hasGithubToken">;
   enqueueWorkflow: (workflowId: string, iteration: number) => Promise<void>;
   cancelWorkflowJobs: (workflowId: string) => Promise<void>;
@@ -163,6 +163,21 @@ export function createWorkflowService(deps: WorkflowServiceDeps = defaultDeps) {
       }
 
       return deps.runDao.findByWorkflowId(workflowId, filters);
+    },
+
+    async getRunLog(runId: string): Promise<string> {
+      const run = await deps.runDao.findById(runId);
+      if (!run) {
+        throw new NotFoundError("Run not found");
+      }
+      if (!run.log_path) {
+        return "";
+      }
+      const file = Bun.file(run.log_path);
+      if (!(await file.exists())) {
+        return "";
+      }
+      return file.text();
     },
 
     async cancel(

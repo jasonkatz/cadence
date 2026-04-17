@@ -4,6 +4,8 @@ import { spawn } from "child_process";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import type { RunLogger } from "../utils/run-logger";
+import { runStreamingClaude } from "./streaming-claude";
 
 export interface E2eResult {
   e2ePass: boolean;
@@ -17,7 +19,8 @@ const E2E_TIMEOUT_MS = 2_400_000; // 40 minutes
 
 export async function runE2eAgent(
   workflow: Workflow,
-  githubToken: string
+  githubToken: string,
+  runLogger?: RunLogger
 ): Promise<E2eResult> {
   const startTime = Date.now();
   const workDir = await mkdtemp(join(tmpdir(), "tmpo-e2e-"));
@@ -31,25 +34,23 @@ export async function runE2eAgent(
 
     const prompt = buildE2ePrompt(workflow);
 
-    // Run the E2E agent with read-write tools (needs Bash for build/start/test commands)
-    const result = await execCommand(
-      "claude",
-      ["-p", prompt, "--allowedTools", "Read,Write,Edit,Glob,Grep,Bash"],
-      {
-        cwd: workDir,
-        timeoutMs: E2E_TIMEOUT_MS,
-      }
-    );
+    const result = await runStreamingClaude({
+      prompt,
+      allowedTools: "Read,Write,Edit,Glob,Grep,Bash",
+      cwd: workDir,
+      timeoutMs: E2E_TIMEOUT_MS,
+      runLogger,
+    });
 
     const durationSecs = Math.round((Date.now() - startTime) / 1000);
     const e2ePass = result.exitCode === 0;
 
     return {
       e2ePass,
-      evidence: result.stdout,
+      evidence: result.resultText,
       exitCode: result.exitCode,
       durationSecs,
-      response: result.stdout,
+      response: result.resultText,
     };
   } catch (error) {
     const durationSecs = Math.round((Date.now() - startTime) / 1000);

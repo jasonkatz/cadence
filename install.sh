@@ -42,6 +42,20 @@ need() {
   command -v "$1" >/dev/null 2>&1 || err "'$1' is required but not found"
 }
 
+# HEAD the given URL (following redirects) and echo its size in MiB, rounded.
+# Prints nothing if the size can't be determined.
+remote_size_mib() {
+  local url="$1"
+  local bytes
+  bytes="$(curl -fsIL "$url" 2>/dev/null \
+    | awk -F': ' 'tolower($1) == "content-length" { print $2 }' \
+    | tr -d '\r' \
+    | tail -1)"
+  if [ -n "$bytes" ] && [ "$bytes" -gt 1048576 ] 2>/dev/null; then
+    printf '%dMB' "$(( (bytes + 524288) / 1048576 ))"
+  fi
+}
+
 # --- Main ---
 
 main() {
@@ -70,11 +84,18 @@ main() {
   trap 'rm -rf "${tmpdir:-}"' EXIT
 
   # Download CLI and daemon
-  echo "Downloading tmpo..."
-  curl -fL --progress-bar -o "${tmpdir}/tmpo" "${base_url}/tmpo-${platform}"
+  local cli_url="${base_url}/tmpo-${platform}"
+  local daemon_url="${base_url}/tmpod-${platform}"
 
-  echo "Downloading tmpod (~60MB)..."
-  curl -fL --progress-bar -o "${tmpdir}/tmpod" "${base_url}/tmpod-${platform}"
+  local cli_size daemon_size
+  cli_size="$(remote_size_mib "$cli_url")"
+  daemon_size="$(remote_size_mib "$daemon_url")"
+
+  echo "Downloading tmpo${cli_size:+ (${cli_size})}..."
+  curl -fL --progress-bar -o "${tmpdir}/tmpo" "$cli_url"
+
+  echo "Downloading tmpod${daemon_size:+ (${daemon_size})}..."
+  curl -fL --progress-bar -o "${tmpdir}/tmpod" "$daemon_url"
 
   # Install
   mkdir -p "$INSTALL_DIR"

@@ -4,6 +4,8 @@ import { spawn } from "child_process";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import type { RunLogger } from "../utils/run-logger";
+import { runStreamingClaude } from "./streaming-claude";
 
 export interface E2eVerifierResult {
   e2ePass: boolean;
@@ -18,7 +20,8 @@ const E2E_VERIFY_TIMEOUT_MS = 1_800_000; // 30 minutes
 export async function runE2eVerifier(
   workflow: Workflow,
   evidence: string,
-  githubToken: string
+  githubToken: string,
+  runLogger?: RunLogger
 ): Promise<E2eVerifierResult> {
   const startTime = Date.now();
   const workDir = await mkdtemp(join(tmpdir(), "tmpo-e2e-verify-"));
@@ -32,25 +35,23 @@ export async function runE2eVerifier(
 
     const prompt = buildE2eVerifierPrompt(workflow, evidence);
 
-    // Run verifier with read-only tools
-    const result = await execCommand(
-      "claude",
-      ["-p", prompt, "--allowedTools", "Read,Glob,Grep,Bash(cat:head:tail:ls:find:wc)"],
-      {
-        cwd: workDir,
-        timeoutMs: E2E_VERIFY_TIMEOUT_MS,
-      }
-    );
+    const result = await runStreamingClaude({
+      prompt,
+      allowedTools: "Read,Glob,Grep,Bash(cat:head:tail:ls:find:wc)",
+      cwd: workDir,
+      timeoutMs: E2E_VERIFY_TIMEOUT_MS,
+      runLogger,
+    });
 
     const durationSecs = Math.round((Date.now() - startTime) / 1000);
-    const { e2ePass, verdict } = parseE2eVerdict(result.stdout);
+    const { e2ePass, verdict } = parseE2eVerdict(result.resultText);
 
     return {
       e2ePass,
       verdict,
       exitCode: result.exitCode,
       durationSecs,
-      response: result.stdout,
+      response: result.resultText,
     };
   } catch (error) {
     const durationSecs = Math.round((Date.now() - startTime) / 1000);

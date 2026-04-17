@@ -4,6 +4,8 @@ import { spawn } from "child_process";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import type { RunLogger } from "../utils/run-logger";
+import { runStreamingClaude } from "./streaming-claude";
 
 export interface DevResult {
   exitCode: number;
@@ -15,7 +17,8 @@ const DEV_TIMEOUT_MS = 3_600_000; // 60 minutes
 
 export async function runDevAgent(
   workflow: Workflow,
-  githubToken: string
+  githubToken: string,
+  runLogger?: RunLogger
 ): Promise<DevResult> {
   const startTime = Date.now();
   const workDir = await mkdtemp(join(tmpdir(), "tmpo-dev-"));
@@ -62,18 +65,15 @@ export async function runDevAgent(
       timeoutMs: 5_000,
     });
 
-    // Build the dev prompt
     const prompt = buildDevPrompt(workflow);
 
-    // Run the agent using claude CLI
-    const result = await execCommand(
-      "claude",
-      ["-p", prompt, "--allowedTools", "Read,Write,Edit,Glob,Grep,Bash"],
-      {
-        cwd: workDir,
-        timeoutMs: DEV_TIMEOUT_MS,
-      }
-    );
+    const result = await runStreamingClaude({
+      prompt,
+      allowedTools: "Read,Write,Edit,Glob,Grep,Bash",
+      cwd: workDir,
+      timeoutMs: DEV_TIMEOUT_MS,
+      runLogger,
+    });
 
     // Stage all changes, commit, and push
     await execCommand("git", ["add", "-A"], {
@@ -124,7 +124,7 @@ export async function runDevAgent(
     return {
       exitCode: result.exitCode,
       durationSecs,
-      response: result.stdout,
+      response: result.resultText,
     };
   } catch (error) {
     const durationSecs = Math.round((Date.now() - startTime) / 1000);

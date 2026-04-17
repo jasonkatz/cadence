@@ -27,7 +27,6 @@ if (process.argv.includes("--version")) {
 const TMPO_DIR = path.join(os.homedir(), ".tmpo");
 const SOCKET_PATH = path.join(TMPO_DIR, "tmpod.sock");
 const PID_PATH = path.join(TMPO_DIR, "tmpod.pid");
-const PUBLIC_DIR = path.join(import.meta.dir, "..", "public");
 
 // --- PID file management ---
 
@@ -114,23 +113,6 @@ async function main(): Promise<void> {
     shutdown: () => gracefulShutdown(engine, socketServer),
   });
   app.use("/v1", daemonRouter);
-
-  // Static web UI serving (for TCP listener)
-  if (existsSync(PUBLIC_DIR)) {
-    app.use(express.static(PUBLIC_DIR));
-    // Client-side routing catch-all: return index.html for non-API, non-asset paths
-    app.get("*", (req, res, next) => {
-      if (req.path.startsWith("/v1/") || req.path.startsWith("/health") || req.path.startsWith("/docs")) {
-        return next();
-      }
-      const indexPath = path.join(PUBLIC_DIR, "index.html");
-      if (existsSync(indexPath)) {
-        res.sendFile(indexPath);
-      } else {
-        next();
-      }
-    });
-  }
 
   // 404 for unmatched routes
   app.use((_req, res) => {

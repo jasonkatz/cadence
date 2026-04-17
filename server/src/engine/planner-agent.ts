@@ -4,6 +4,8 @@ import { spawn } from "child_process";
 import { mkdtemp, readFile, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import type { RunLogger } from "../utils/run-logger";
+import { runStreamingClaude } from "./streaming-claude";
 
 const PROPOSAL_FILENAME = "PROPOSAL.md";
 
@@ -18,7 +20,8 @@ const PLANNER_TIMEOUT_MS = 1_800_000; // 30 minutes
 
 export async function runPlannerAgent(
   workflow: Workflow,
-  githubToken: string
+  githubToken: string,
+  runLogger?: RunLogger
 ): Promise<PlannerResult> {
   const startTime = Date.now();
   const workDir = await mkdtemp(join(tmpdir(), "tmpo-planner-"));
@@ -30,18 +33,15 @@ export async function runPlannerAgent(
       timeoutMs: 60_000,
     });
 
-    // Build the planner prompt
     const prompt = buildPlannerPrompt(workflow);
 
-    // Run the agent using claude CLI
-    const result = await execCommand(
-      "claude",
-      ["-p", prompt, "--allowedTools", "Read,Write,Glob,Grep,Bash(git log:git diff:git show:ls:find:wc)"],
-      {
-        cwd: workDir,
-        timeoutMs: PLANNER_TIMEOUT_MS,
-      }
-    );
+    const result = await runStreamingClaude({
+      prompt,
+      allowedTools: "Read,Write,Glob,Grep,Bash(git log:git diff:git show:ls:find:wc)",
+      cwd: workDir,
+      timeoutMs: PLANNER_TIMEOUT_MS,
+      runLogger,
+    });
 
     // Read the proposal from the file the agent wrote
     const proposalPath = join(workDir, PROPOSAL_FILENAME);
@@ -52,7 +52,7 @@ export async function runPlannerAgent(
       proposal,
       exitCode: result.exitCode,
       durationSecs,
-      response: result.stdout,
+      response: result.resultText,
     };
   } catch (error) {
     const durationSecs = Math.round((Date.now() - startTime) / 1000);

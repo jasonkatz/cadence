@@ -2,7 +2,16 @@ import path from "path";
 import os from "os";
 import { mkdirSync, appendFileSync } from "fs";
 
-export type RunEvent = "prompt" | "response" | "tool_call" | "error";
+export type RunEvent =
+  | "prompt"
+  | "response"
+  | "tool_call"
+  | "error"
+  | "system"
+  | "assistant"
+  | "user"
+  | "result"
+  | "rate_limit_event";
 
 export interface RunLogger {
   logPath: string;

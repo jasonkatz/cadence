@@ -14,6 +14,11 @@ export interface Run {
 
 export function createRunDao(q: QueryFn) {
   return {
+  async findById(runId: string): Promise<Run | null> {
+    const result = await q<Run>(`SELECT * FROM runs WHERE id = ?`, [runId]);
+    return result.rows[0] ? parseNumericFields(result.rows[0]) : null;
+  },
+
   async findByWorkflowId(
     workflowId: string,
     filters?: { agentRole?: string; iteration?: number }

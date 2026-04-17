@@ -4,6 +4,8 @@ import { spawn } from "child_process";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import type { RunLogger } from "../utils/run-logger";
+import { runStreamingClaude } from "./streaming-claude";
 
 export interface ReviewResult {
   reviewPass: boolean;
@@ -18,7 +20,8 @@ const REVIEW_TIMEOUT_MS = 1_800_000; // 30 minutes
 export async function runReviewAgent(
   workflow: Workflow,
   diff: string,
-  githubToken: string
+  githubToken: string,
+  runLogger?: RunLogger
 ): Promise<ReviewResult> {
   const startTime = Date.now();
   const workDir = await mkdtemp(join(tmpdir(), "tmpo-review-"));
@@ -32,25 +35,23 @@ export async function runReviewAgent(
 
     const prompt = buildReviewPrompt(workflow, diff);
 
-    // Run the reviewer agent with read-only tools
-    const result = await execCommand(
-      "claude",
-      ["-p", prompt, "--allowedTools", "Read,Glob,Grep,Bash(git log:git diff:git show:ls:find:wc:cat:head:tail)"],
-      {
-        cwd: workDir,
-        timeoutMs: REVIEW_TIMEOUT_MS,
-      }
-    );
+    const result = await runStreamingClaude({
+      prompt,
+      allowedTools: "Read,Glob,Grep,Bash(git log:git diff:git show:ls:find:wc:cat:head:tail)",
+      cwd: workDir,
+      timeoutMs: REVIEW_TIMEOUT_MS,
+      runLogger,
+    });
 
     const durationSecs = Math.round((Date.now() - startTime) / 1000);
-    const { reviewPass, verdict } = parseVerdict(result.stdout);
+    const { reviewPass, verdict } = parseVerdict(result.resultText);
 
     return {
       reviewPass,
       verdict,
       exitCode: result.exitCode,
       durationSecs,
-      response: result.stdout,
+      response: result.resultText,
     };
   } catch (error) {
     const durationSecs = Math.round((Date.now() - startTime) / 1000);

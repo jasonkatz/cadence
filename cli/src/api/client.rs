@@ -38,6 +38,11 @@ impl ApiClient {
         Ok(serde_json::from_slice(&body)?)
     }
 
+    pub async fn get_text(&self, path: &str) -> anyhow::Result<String> {
+        let body = self.request("GET", path, None).await?;
+        Ok(String::from_utf8_lossy(&body).into_owned())
+    }
+
     pub async fn post<T: DeserializeOwned>(&self, path: &str) -> anyhow::Result<T> {
         let body = self.request("POST", path, None).await?;
         Ok(serde_json::from_slice(&body)?)
