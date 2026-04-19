@@ -6,6 +6,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import type { RunLogger } from "../utils/run-logger";
 import { runStreamingClaude } from "./streaming-claude";
+import type { AgentReaperContext } from "./planner-agent";
 
 export interface E2eVerifierResult {
   e2ePass: boolean;
@@ -21,7 +22,8 @@ export async function runE2eVerifier(
   workflow: Workflow,
   evidence: string,
   githubToken: string,
-  runLogger?: RunLogger
+  runLogger?: RunLogger,
+  reaper?: AgentReaperContext
 ): Promise<E2eVerifierResult> {
   const startTime = Date.now();
   const workDir = await mkdtemp(join(tmpdir(), "tmpo-e2e-verify-"));
@@ -41,6 +43,8 @@ export async function runE2eVerifier(
       cwd: workDir,
       timeoutMs: E2E_VERIFY_TIMEOUT_MS,
       runLogger,
+      stepId: reaper?.stepId,
+      pidRegistry: reaper?.pidRegistry,
     });
 
     const durationSecs = Math.round((Date.now() - startTime) / 1000);

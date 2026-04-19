@@ -11,7 +11,7 @@ function makeApp(deps: DaemonRouteDeps) {
 
 function makeDeps(): DaemonRouteDeps {
   return {
-    getState: mock(() => ({
+    getState: mock(async () => ({
       pid: 12345,
       uptime: 3600,
       socketPath: "/tmp/test.sock",

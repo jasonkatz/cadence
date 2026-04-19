@@ -105,6 +105,14 @@ export function createWorkflowDao(q: QueryFn) {
     return result.rows[0] || null;
   },
 
+  async countByStatus(status: string): Promise<number> {
+    const result = await q<{ count: number }>(
+      `SELECT COUNT(*) as count FROM workflows WHERE status = ?`,
+      [status]
+    );
+    return Number(result.rows[0].count);
+  },
+
   async updateProposal(
     id: string,
     proposal: string

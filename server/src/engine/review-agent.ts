@@ -6,6 +6,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import type { RunLogger } from "../utils/run-logger";
 import { runStreamingClaude } from "./streaming-claude";
+import type { AgentReaperContext } from "./planner-agent";
 
 export interface ReviewResult {
   reviewPass: boolean;
@@ -21,7 +22,8 @@ export async function runReviewAgent(
   workflow: Workflow,
   diff: string,
   githubToken: string,
-  runLogger?: RunLogger
+  runLogger?: RunLogger,
+  reaper?: AgentReaperContext
 ): Promise<ReviewResult> {
   const startTime = Date.now();
   const workDir = await mkdtemp(join(tmpdir(), "tmpo-review-"));
@@ -41,6 +43,8 @@ export async function runReviewAgent(
       cwd: workDir,
       timeoutMs: REVIEW_TIMEOUT_MS,
       runLogger,
+      stepId: reaper?.stepId,
+      pidRegistry: reaper?.pidRegistry,
     });
 
     const durationSecs = Math.round((Date.now() - startTime) / 1000);

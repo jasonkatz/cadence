@@ -6,6 +6,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import type { RunLogger } from "../utils/run-logger";
 import { runStreamingClaude } from "./streaming-claude";
+import type { AgentReaperContext } from "./planner-agent";
 
 export interface DevResult {
   exitCode: number;
@@ -18,7 +19,8 @@ const DEV_TIMEOUT_MS = 3_600_000; // 60 minutes
 export async function runDevAgent(
   workflow: Workflow,
   githubToken: string,
-  runLogger?: RunLogger
+  runLogger?: RunLogger,
+  reaper?: AgentReaperContext
 ): Promise<DevResult> {
   const startTime = Date.now();
   const workDir = await mkdtemp(join(tmpdir(), "tmpo-dev-"));
@@ -73,6 +75,8 @@ export async function runDevAgent(
       cwd: workDir,
       timeoutMs: DEV_TIMEOUT_MS,
       runLogger,
+      stepId: reaper?.stepId,
+      pidRegistry: reaper?.pidRegistry,
     });
 
     // Stage all changes, commit, and push

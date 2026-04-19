@@ -1,6 +1,10 @@
-import { describe, it, expect, beforeEach, mock } from "bun:test";
+import { describe, it, expect, beforeEach, mock, afterEach } from "bun:test";
 import type { Workflow } from "../dao/workflow-dao";
+import type { Run } from "../dao/run-dao";
 import { createWorkflowService, WorkflowServiceDeps } from "./workflow-service";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import path from "path";
+import os from "os";
 
 function makeWorkflow(overrides?: Partial<Workflow>): Workflow {
   return {
@@ -41,6 +45,7 @@ function makeDeps() {
   const mockRunFindByWorkflowId = mock((_wfId: string, _filters?: unknown) =>
     Promise.resolve([])
   );
+  const mockRunFindById = mock((_runId: string) => Promise.resolve(null));
 
   const mockHasGithubToken = mock(() => true);
 
@@ -64,6 +69,7 @@ function makeDeps() {
     } as WorkflowServiceDeps["stepDao"],
     runDao: {
       findByWorkflowId: mockRunFindByWorkflowId,
+      findById: mockRunFindById,
     } as WorkflowServiceDeps["runDao"],
     configService: {
       hasGithubToken: mockHasGithubToken,
@@ -82,6 +88,7 @@ function makeDeps() {
       stepFindByWorkflowId: mockStepFindByWorkflowId,
       stepFindLatest: mockStepFindLatest,
       runFindByWorkflowId: mockRunFindByWorkflowId,
+      runFindById: mockRunFindById,
       hasGithubToken: mockHasGithubToken,
       enqueueWorkflow: mockEnqueueWorkflow,
       cancelWorkflowJobs: mockCancelWorkflowJobs,
@@ -240,6 +247,48 @@ describe("workflowService", () => {
 
       const result = await service.getRuns("wf-1");
       expect(result).toEqual([]);
+    });
+  });
+
+  describe("getRunLog", () => {
+    let tmpDir: string;
+
+    beforeEach(() => {
+      tmpDir = mkdtempSync(path.join(os.tmpdir(), "tmpo-runlog-"));
+    });
+
+    afterEach(() => {
+      rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it("drops a partial trailing JSONL line from a crashed write", async () => {
+      const logPath = path.join(tmpDir, "dev-0.jsonl");
+      writeFileSync(
+        logPath,
+        `{"event":"prompt","data":{"text":"start"}}\n{"event":"resul`,
+        "utf-8"
+      );
+
+      const run: Run = {
+        id: "run-1",
+        step_id: "step-1",
+        workflow_id: "wf-1",
+        agent_role: "dev",
+        iteration: 0,
+        log_path: logPath,
+        exit_code: null,
+        duration_secs: null,
+        created_at: new Date(),
+      };
+      mocks.runFindById.mockResolvedValue(run);
+
+      const content = await service.getRunLog("run-1");
+      const lines = content.split("\n").filter((l) => l.length > 0);
+      expect(lines).toHaveLength(1);
+      // Final line must be parseable; partial line dropped.
+      for (const line of lines) {
+        expect(() => JSON.parse(line)).not.toThrow();
+      }
     });
   });
 

@@ -6,6 +6,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import type { RunLogger } from "../utils/run-logger";
 import { runStreamingClaude } from "./streaming-claude";
+import type { PidRegistry } from "./subprocess-reaper";
 
 const PROPOSAL_FILENAME = "PROPOSAL.md";
 
@@ -16,12 +17,25 @@ export interface PlannerResult {
   response: string;
 }
 
+/**
+ * Per-agent-call identifiers used by the subprocess reaper. Step wrappers
+ * compute a deterministic `stepId` (`${workflowId}:${iteration}:${type}`) and
+ * forward the daemon's shared `pidRegistry`. Both are optional so the legacy
+ * test harness that exercises these functions without a running engine keeps
+ * working.
+ */
+export interface AgentReaperContext {
+  stepId?: string;
+  pidRegistry?: PidRegistry;
+}
+
 const PLANNER_TIMEOUT_MS = 1_800_000; // 30 minutes
 
 export async function runPlannerAgent(
   workflow: Workflow,
   githubToken: string,
-  runLogger?: RunLogger
+  runLogger?: RunLogger,
+  reaper?: AgentReaperContext
 ): Promise<PlannerResult> {
   const startTime = Date.now();
   const workDir = await mkdtemp(join(tmpdir(), "tmpo-planner-"));
@@ -41,6 +55,8 @@ export async function runPlannerAgent(
       cwd: workDir,
       timeoutMs: PLANNER_TIMEOUT_MS,
       runLogger,
+      stepId: reaper?.stepId,
+      pidRegistry: reaper?.pidRegistry,
     });
 
     // Read the proposal from the file the agent wrote

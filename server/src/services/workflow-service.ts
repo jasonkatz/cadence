@@ -2,6 +2,7 @@ import { workflowDao as defaultWorkflowDao, Workflow } from "../dao/workflow-dao
 import { stepDao as defaultStepDao, Step } from "../dao/step-dao";
 import { runDao as defaultRunDao, Run } from "../dao/run-dao";
 import { configService as defaultConfigService } from "./config-service";
+import { parseJsonlTolerant } from "../utils/run-logger";
 import {
   ValidationError,
   NotFoundError,
@@ -177,7 +178,9 @@ export function createWorkflowService(deps: WorkflowServiceDeps = defaultDeps) {
       if (!(await file.exists())) {
         return "";
       }
-      return file.text();
+      // Drop a partial trailing JSONL line (from e.g. `kill -9` between
+      // flushes) so the caller sees a well-formed stream.
+      return parseJsonlTolerant(await file.text());
     },
 
     async cancel(

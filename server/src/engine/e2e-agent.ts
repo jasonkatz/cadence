@@ -6,6 +6,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import type { RunLogger } from "../utils/run-logger";
 import { runStreamingClaude } from "./streaming-claude";
+import type { AgentReaperContext } from "./planner-agent";
 
 export interface E2eResult {
   e2ePass: boolean;
@@ -20,7 +21,8 @@ const E2E_TIMEOUT_MS = 2_400_000; // 40 minutes
 export async function runE2eAgent(
   workflow: Workflow,
   githubToken: string,
-  runLogger?: RunLogger
+  runLogger?: RunLogger,
+  reaper?: AgentReaperContext
 ): Promise<E2eResult> {
   const startTime = Date.now();
   const workDir = await mkdtemp(join(tmpdir(), "tmpo-e2e-"));
@@ -40,6 +42,8 @@ export async function runE2eAgent(
       cwd: workDir,
       timeoutMs: E2E_TIMEOUT_MS,
       runLogger,
+      stepId: reaper?.stepId,
+      pidRegistry: reaper?.pidRegistry,
     });
 
     const durationSecs = Math.round((Date.now() - startTime) / 1000);

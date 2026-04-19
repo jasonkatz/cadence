@@ -17,7 +17,7 @@ app.use(errorHandler);
 
 const port = parseInt(config.PORT, 10);
 
-const engine = createEngine();
+const engine = await createEngine();
 setEngineFunctions({
   enqueueWorkflow: engine.enqueueWorkflow.bind(engine),
   cancelWorkflowJobs: engine.cancelWorkflowJobs.bind(engine),
