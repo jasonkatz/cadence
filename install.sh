@@ -28,6 +28,13 @@ detect_platform() {
     *)              err "Unsupported architecture: $arch" ;;
   esac
 
+  # tmpo doesn't ship macOS Intel binaries — the bundled workflow runtime has
+  # native deps (cbor-extract) that require building on a matching host, and
+  # GitHub's Intel macOS runners are unreliable. Apple Silicon only for now.
+  if [ "$os" = "darwin" ] && [ "$arch" = "x64" ]; then
+    err "macOS Intel (x86_64) is not supported. Install on Apple Silicon or build from source: https://github.com/jasonkatz/tmpo"
+  fi
+
   echo "${os}-${arch}"
 }
 

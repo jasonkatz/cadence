@@ -17,9 +17,6 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
             artifact: tmpo-darwin-arm64
-          - target: x86_64-apple-darwin
-            os: macos-latest
-            artifact: tmpo-darwin-x64
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             artifact: tmpo-linux-x64
@@ -81,9 +78,6 @@ jobs:
           - target: bun-darwin-arm64
             os: macos-latest
             artifact: tmpod-darwin-arm64
-          - target: bun-darwin-x64
-            os: macos-13
-            artifact: tmpod-darwin-x64
           - target: bun-linux-x64
             os: ubuntu-latest
             artifact: tmpod-linux-x64
@@ -137,11 +131,9 @@ jobs:
           mkdir -p release
           # Every artifact is uploaded under a dir matching its filename.
           cp artifacts/tmpo-darwin-arm64/tmpo-darwin-arm64 release/
-          cp artifacts/tmpo-darwin-x64/tmpo-darwin-x64 release/
           cp artifacts/tmpo-linux-x64/tmpo-linux-x64 release/
           cp artifacts/tmpo-linux-arm64/tmpo-linux-arm64 release/
           cp artifacts/tmpod-darwin-arm64/tmpod-darwin-arm64 release/
-          cp artifacts/tmpod-darwin-x64/tmpod-darwin-x64 release/
           cp artifacts/tmpod-linux-x64/tmpod-linux-x64 release/
           cp artifacts/tmpod-linux-arm64/tmpod-linux-arm64 release/
           chmod +x release/*
@@ -156,11 +148,9 @@ jobs:
           generate_release_notes: true
           files: |
             release/tmpo-darwin-arm64
-            release/tmpo-darwin-x64
             release/tmpo-linux-x64
             release/tmpo-linux-arm64
             release/tmpod-darwin-arm64
-            release/tmpod-darwin-x64
             release/tmpod-linux-x64
             release/tmpod-linux-arm64
             release/SHA256SUMS
@@ -182,11 +172,9 @@ jobs:
         run: |
           sha256() { sha256sum "$1" | awk '{print $1}'; }
           echo "tmpo_darwin_arm64=$(sha256 tmpo-darwin-arm64/tmpo-darwin-arm64)" >> "$GITHUB_OUTPUT"
-          echo "tmpo_darwin_x64=$(sha256 tmpo-darwin-x64/tmpo-darwin-x64)" >> "$GITHUB_OUTPUT"
           echo "tmpo_linux_x64=$(sha256 tmpo-linux-x64/tmpo-linux-x64)" >> "$GITHUB_OUTPUT"
           echo "tmpo_linux_arm64=$(sha256 tmpo-linux-arm64/tmpo-linux-arm64)" >> "$GITHUB_OUTPUT"
           echo "tmpod_darwin_arm64=$(sha256 tmpod-darwin-arm64/tmpod-darwin-arm64)" >> "$GITHUB_OUTPUT"
-          echo "tmpod_darwin_x64=$(sha256 tmpod-darwin-x64/tmpod-darwin-x64)" >> "$GITHUB_OUTPUT"
           echo "tmpod_linux_x64=$(sha256 tmpod-linux-x64/tmpod-linux-x64)" >> "$GITHUB_OUTPUT"
           echo "tmpod_linux_arm64=$(sha256 tmpod-linux-arm64/tmpod-linux-arm64)" >> "$GITHUB_OUTPUT"
 
@@ -206,22 +194,14 @@ jobs:
             license "MIT"
 
             on_macos do
-              if Hardware::CPU.arm?
-                url "https://github.com/jasonkatz/tmpo/releases/download/v${VERSION}/tmpo-darwin-arm64"
-                sha256 "${{ steps.checksums.outputs.tmpo_darwin_arm64 }}"
+              odie "tmpo only ships macOS binaries for Apple Silicon (arm64)" unless Hardware::CPU.arm?
 
-                resource "tmpod" do
-                  url "https://github.com/jasonkatz/tmpo/releases/download/v${VERSION}/tmpod-darwin-arm64"
-                  sha256 "${{ steps.checksums.outputs.tmpod_darwin_arm64 }}"
-                end
-              else
-                url "https://github.com/jasonkatz/tmpo/releases/download/v${VERSION}/tmpo-darwin-x64"
-                sha256 "${{ steps.checksums.outputs.tmpo_darwin_x64 }}"
+              url "https://github.com/jasonkatz/tmpo/releases/download/v${VERSION}/tmpo-darwin-arm64"
+              sha256 "${{ steps.checksums.outputs.tmpo_darwin_arm64 }}"
 
-                resource "tmpod" do
-                  url "https://github.com/jasonkatz/tmpo/releases/download/v${VERSION}/tmpod-darwin-x64"
-                  sha256 "${{ steps.checksums.outputs.tmpod_darwin_x64 }}"
-                end
+              resource "tmpod" do
+                url "https://github.com/jasonkatz/tmpo/releases/download/v${VERSION}/tmpod-darwin-arm64"
+                sha256 "${{ steps.checksums.outputs.tmpod_darwin_arm64 }}"
               end
             end
 
