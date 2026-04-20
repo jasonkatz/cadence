@@ -83,6 +83,13 @@ jobs:
         working-directory: server
         run: bun install
 
+      # bun install runs the postinstall script that patches @workflow/world-local
+      # for bun-compile compatibility; re-run defensively in case postinstall was
+      # skipped (e.g. when running with --ignore-scripts in a future change).
+      - name: Patch @workflow/world-local for bun-compile
+        working-directory: server
+        run: node scripts/patch-wdk.mjs
+
       - name: Build daemon binaries
         working-directory: server
         run: |

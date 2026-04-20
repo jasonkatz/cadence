@@ -14,7 +14,8 @@
         "lint": "eslint .",
         "lint:fix": "eslint . --fix",
         "test": "bun test",
-        "test:watch": "bun test --watch"
+        "test:watch": "bun test --watch",
+        "postinstall": "node scripts/patch-wdk.mjs"
     },
     "dependencies": {
         "@workflow/world-local": "5.0.0-beta.2",

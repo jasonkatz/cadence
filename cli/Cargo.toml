@@ -1,6 +1,6 @@
 [package]
 name = "tmpo-cli"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "CLI for the tmpo autonomous software delivery pipeline"
 license = "MIT"
